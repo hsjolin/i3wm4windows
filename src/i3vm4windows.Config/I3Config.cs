@@ -89,6 +89,7 @@ public sealed record I3Config(
     IReadOnlyList<string> Exec,
     int MinWindowWidth = 400,
     LayoutMode DefaultWorkspaceLayout = LayoutMode.Split,
+    bool FocusFollowsMouse = false,
     BarConfig? Bar = null);
 
 /// <summary>What a for_window rule does with the windows it matches.</summary>

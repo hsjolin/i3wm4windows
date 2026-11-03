@@ -256,6 +256,12 @@ internal static class Win32
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
 
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
+
     [DllImport("user32.dll")]
     public static extern IntPtr SetWinEventHook(
         uint minEvent, uint maxEvent, IntPtr module, WinEventDelegate proc,
@@ -318,6 +324,8 @@ internal static class Win32
     public const int VK_RIGHT = 0x27;
     public const int VK_ENTER = 0x0D;
     public const int VK_LWIN = 0x5B;
+    public const int VK_LBUTTON = 0x01;
+    public const int VK_RBUTTON = 0x02;
     public const int VK_RWIN = 0x5C;
 
     public const uint MONITOR_DEFAULTTOPRIMARY = 1;

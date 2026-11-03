@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Threading;
 using i3vm4windows.App.Interop;
@@ -59,11 +60,26 @@ internal sealed class WindowManager : IDisposable
     private readonly BarConfig _barConfig;
     private readonly WorkspaceBar _bar;
     private readonly DispatcherTimer _refreshTimer;
+    private readonly Dispatcher _dispatcher;
     private readonly uint _ownProcessId;
     private readonly Win32.WinEventDelegate _winEventDelegate;
     private IReadOnlyList<WindowRule> _rules;
     private IntPtr _winEventHook;
     private bool _disposed;
+
+    /// <summary>focus_follows_mouse yes: hovering a managed window of the
+    /// active workspace focuses it.</summary>
+    public bool FocusFollowsMouse { get; set; }
+
+    private IntPtr _mouseHook;
+    private readonly Win32.LowLevelMouseProc _mouseProc;
+    private long _mouseOverHandle;
+
+    /// <summary>The window that had the focus when it closed, and the
+    /// workspace it belonged to — so the refresh can hand the focus back
+    /// to that workspace's previously used window.</summary>
+    private long _deadForegroundHandle;
+    private int? _deadForegroundWorkspace;
 
     public WindowManager(
         IReadOnlyList<WindowRule>? rules = null,
@@ -76,6 +92,8 @@ internal sealed class WindowManager : IDisposable
         _barConfig = bar ?? new BarConfig();
         _bar = new WorkspaceBar(_barConfig);
         _ownProcessId = (uint)Environment.ProcessId;
+        _dispatcher = Dispatcher.CurrentDispatcher;
+        _mouseProc = OnMouseEvent;
         _refreshTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(150),
@@ -98,6 +116,12 @@ internal sealed class WindowManager : IDisposable
             0,
             0,
             Win32.WINEVENT_OUTOFCONTEXT | Win32.WINEVENT_SKIPOWNPROCESS);
+
+        if (FocusFollowsMouse)
+        {
+            _mouseHook = Win32.SetWindowsHookEx(
+                Win32.WH_MOUSE_LL, _mouseProc, Win32.GetModuleHandle(null), 0);
+        }
 
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
@@ -176,6 +200,7 @@ internal sealed class WindowManager : IDisposable
             DiscoverNewWindows();
             ApplyLayout();
             RefreshIndicators();
+            RefocusAfterClose();
         }
         catch (Exception error)
         {
@@ -210,6 +235,10 @@ internal sealed class WindowManager : IDisposable
             if (!ApplyLayoutPass())
                 break;
         }
+
+        // The bar shows the tab order and the active tab, which a window
+        // move changes even when the shown window does not.
+        RefreshIndicators();
     }
 
     /// <summary>
@@ -802,6 +831,12 @@ internal sealed class WindowManager : IDisposable
             _winEventHook = IntPtr.Zero;
         }
 
+        if (_mouseHook != IntPtr.Zero)
+        {
+            Win32.UnhookWindowsHookEx(_mouseHook);
+            _mouseHook = IntPtr.Zero;
+        }
+
         _bar.Dispose();
     }
 
@@ -832,7 +867,21 @@ internal sealed class WindowManager : IDisposable
                 DebounceRefresh();
                 break;
 
-            case Win32.EVENT_OBJECT_SHOW or Win32.EVENT_OBJECT_DESTROY:
+            case Win32.EVENT_OBJECT_SHOW:
+                DebounceRefresh();
+                break;
+
+            case Win32.EVENT_OBJECT_DESTROY:
+                // A managed foreground window closing must hand the focus
+                // back to its workspace's previously used window — note it
+                // before the refresh removes the window from the tree.
+                if (_managedHandles.Contains(hwnd.ToInt64()) &&
+                    hwnd == Win32.GetForegroundWindow())
+                {
+                    _deadForegroundHandle = hwnd.ToInt64();
+                    _deadForegroundWorkspace = _workspaces.FindOwner(_deadForegroundHandle)?.Index;
+                }
+
                 DebounceRefresh();
                 break;
 
@@ -850,6 +899,87 @@ internal sealed class WindowManager : IDisposable
         _managedHandles.Remove(handle);
         _placements.Remove(handle);
         _hiddenByUs.Remove(handle);
+    }
+
+    /// <summary>
+    /// When the window that had the focus closed, hand the focus back to
+    /// the window that was focused before it in that workspace (its focus
+    /// history) instead of whatever the shell picked on its own — like
+    /// closing a mail returning to the inbox, not to the first window.
+    /// </summary>
+    private void RefocusAfterClose()
+    {
+        var dead = _deadForegroundHandle;
+        var workspaceIndex = _deadForegroundWorkspace;
+        _deadForegroundHandle = 0;
+        _deadForegroundWorkspace = null;
+        if (dead == 0 || workspaceIndex is not { } index)
+            return;
+
+        if (_workspaces.TryGet(index) is not { } workspace ||
+            workspace.FocusedWindowHandle is not { } next ||
+            _workspaces.GetActiveIndex(workspace.OutputName) != index)
+            return;
+
+        Win32.SetForegroundWindow(new IntPtr(next));
+        ApplyLayout();
+    }
+
+    /// <summary>
+    /// The low-level mouse hook: on every move, the window under the
+    /// cursor is handed to the UI thread for the focus-follows-mouse
+    /// decision.
+    /// </summary>
+    private IntPtr OnMouseEvent(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode >= 0 && wParam.ToInt64() == Win32.WM_MOUSEMOVE)
+        {
+            var data = Marshal.PtrToStructure<Win32.MSLLHOOKSTRUCT>(lParam);
+            var handle = Win32.WindowFromPoint(data.pt).ToInt64();
+            _dispatcher.BeginInvoke(() => FollowMouse(handle));
+        }
+
+        return Win32.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+    }
+
+    /// <summary>
+    /// Focuses the window under the pointer when it is a managed window of
+    /// the workspace active on its display. A background process may not
+    /// take the foreground on its own, so the target thread's input queue
+    /// is borrowed for the switch.
+    /// </summary>
+    private void FollowMouse(long handle)
+    {
+        if (!FocusFollowsMouse || _disposed)
+            return;
+        if (handle == _mouseOverHandle)
+            return;
+        _mouseOverHandle = handle;
+
+        // No focus stealing in the middle of a mouse drag.
+        if ((Win32.GetAsyncKeyState(Win32.VK_LBUTTON) & 0x8000) != 0 ||
+            (Win32.GetAsyncKeyState(Win32.VK_RBUTTON) & 0x8000) != 0)
+            return;
+
+        if (!_managedHandles.Contains(handle))
+            return;
+
+        var owner = _workspaces.FindOwner(handle);
+        if (owner is null ||
+            owner.FocusedWindowHandle == handle ||
+            _workspaces.GetActiveIndex(owner.OutputName) != owner.Index)
+            return;
+
+        _workspaces.SetFocusedWindow(handle);
+
+        var hwnd = new IntPtr(handle);
+        var targetThread = Win32.GetWindowThreadProcessId(hwnd, out _);
+        var ownThread = Win32.GetCurrentThreadId();
+        Win32.AttachThreadInput(ownThread, targetThread, true);
+        Win32.SetForegroundWindow(hwnd);
+        Win32.AttachThreadInput(ownThread, targetThread, false);
+
+        ApplyLayout();
     }
 
     private void ForgetDeadWindows()

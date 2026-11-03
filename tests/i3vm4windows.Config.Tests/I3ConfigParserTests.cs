@@ -17,7 +17,7 @@ public class I3ConfigParserTests
 
         var binding = Assert.Single(config.Bindings);
         Assert.Equal(Modifiers.Win, binding.Modifiers);
-        Assert.Equal("1", binding.Key);
+        Assert.Equal("D1", binding.Key);
         Assert.Equal(ConfigAction.SwitchWorkspace, binding.Action);
         Assert.Equal(1, binding.Parameter);
         Assert.Empty(config.Warnings);
@@ -73,7 +73,7 @@ public class I3ConfigParserTests
             bindsym $mod+q kill
             """);
 
-        Assert.Equal(new[] { "Enter", "Q" }, config.Bindings.Select(b => b.Key));
+        Assert.Equal(new[] { "Return", "Q" }, config.Bindings.Select(b => b.Key));
     }
 
     [Theory]
@@ -270,7 +270,7 @@ public class I3ConfigParserTests
         Assert.Equal(9, moveToWorkspace.Count());
         Assert.Contains(config.Bindings, b =>
             b.Modifiers == (Modifiers.Win | Modifiers.Shift) &&
-            b.Key == "1" &&
+            b.Key == "D1" &&
             b.Action == ConfigAction.MoveToWorkspace &&
             b.Parameter == 1);
 
@@ -469,7 +469,7 @@ public class I3ConfigParserTests
         Assert.Equal(ConfigAction.ResizeShrinkWidth, shrink.Action);
         Assert.Equal(10, shrink.Parameter);
 
-        var leave = config.Bindings.Single(b => b.Mode == "resize" && b.Key == "Enter");
+        var leave = config.Bindings.Single(b => b.Mode == "resize" && b.Key == "Return");
         Assert.Equal(ConfigAction.Mode, leave.Action);
         Assert.Equal("default", leave.Command);
     }
@@ -701,6 +701,26 @@ public class I3ConfigParserTests
 
         var invalid = I3ConfigParser.Parse("workspace_layout stacking");
         Assert.Equal(LayoutMode.Split, invalid.DefaultWorkspaceLayout);
+        Assert.Single(invalid.Warnings);
+    }
+
+    [Fact]
+    public void Focus_follows_mouse_yes_enables_it_and_off_is_the_default()
+    {
+        var enabled = I3ConfigParser.Parse("""
+            focus_follows_mouse yes
+            bindsym Mod4+q kill
+            """);
+        Assert.True(enabled.FocusFollowsMouse);
+        Assert.Empty(enabled.Warnings);
+
+        var withoutDirective = I3ConfigParser.Parse("""
+            bindsym Mod4+q kill
+            """);
+        Assert.False(withoutDirective.FocusFollowsMouse);
+
+        var invalid = I3ConfigParser.Parse("focus_follows_mouse maybe");
+        Assert.False(invalid.FocusFollowsMouse);
         Assert.Single(invalid.Warnings);
     }
 

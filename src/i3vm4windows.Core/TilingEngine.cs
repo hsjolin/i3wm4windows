@@ -65,9 +65,7 @@ public sealed class TilingEngine
         }
 
         if (workspace.FocusedWindowHandle == windowHandle)
-            workspace.FocusedWindowHandle = workspace.WindowHandles.Count > 0
-                ? workspace.WindowHandles[0]
-                : null;
+            workspace.FocusedWindowHandle = workspace.NextFocusAfter(windowHandle);
 
         return true;
     }

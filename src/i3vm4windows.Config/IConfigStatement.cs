@@ -80,6 +80,10 @@ public sealed class ConfigContext
     /// workspace_layout).</summary>
     public LayoutMode WorkspaceLayout { get; set; } = LayoutMode.Split;
 
+    /// <summary>Whether hovering a window focuses it (i3's
+    /// focus_follows_mouse); off unless the configuration asks for it.</summary>
+    public bool FocusFollowsMouse { get; set; }
+
     /// <summary>The binding mode whose block is open, or null in the
     /// default mode.</summary>
     public string? Mode { get; set; }

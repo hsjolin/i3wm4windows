@@ -159,6 +159,11 @@ Default workspace layout: `workspace_layout tabbed|default` (default
 `default`) makes every new workspace start as tabs, like the
 `layout tabbed` command applied from the start.
 
+Focus follows mouse: `focus_follows_mouse yes|no` (default `no`) — when
+`yes`, moving the pointer onto a managed window of the active workspace
+focuses it, and closing a window returns focus to the previously focused
+one rather than the first.
+
 ## Default key bindings (v0.4)
 
 Workspaces are global and each is bound to the display it was created on;

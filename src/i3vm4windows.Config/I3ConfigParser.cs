@@ -75,6 +75,7 @@ public static class I3ConfigParser
             context.Autostarts,
             context.MinWindowWidth,
             context.WorkspaceLayout,
+            context.FocusFollowsMouse,
             context.Bar.ToConfig());
     }
 

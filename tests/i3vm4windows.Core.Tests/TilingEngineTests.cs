@@ -184,6 +184,20 @@ public sealed class TilingEngineTests
         }
 
         [Fact]
+        public void RemovingFocusedWindow_MovesFocusToPreviouslyFocused_NotFirst()
+        {
+            // Focus history: 100, 200, 300 (add order), then 200 via focus.
+            var (workspace, engine) = Create(100, 200, 300);
+            engine.FocusRelative(workspace, -1);
+            Assert.Equal(200, workspace.FocusedWindowHandle);
+
+            engine.RemoveWindow(workspace, 200);
+
+            // The previously focused window is 300, not the first (100).
+            Assert.Equal(300, workspace.FocusedWindowHandle);
+        }
+
+        [Fact]
         public void UnknownHandle_ReturnsFalse()
         {
             var (workspace, engine) = Create(100);
