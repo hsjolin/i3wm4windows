@@ -233,7 +233,13 @@ internal static class Win32
     public static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll")]
-    public static extern bool SetForegroundWindow(IntPtr hwnd);
+    public static extern IntPtr SetActiveWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     public static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);

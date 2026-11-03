@@ -983,6 +983,12 @@ internal sealed class WindowManager : IDisposable
             // edit control, say); the tiling manages top-level windows.
             var root = Win32.GetAncestor(under, Win32.GA_ROOT);
             var handle = (root == IntPtr.Zero ? under : root).ToInt64();
+
+            // The foreground switch happens here, in the hook callback,
+            // while the input is still being dispatched: a background
+            // process gets the foreground lock relaxed only then. The
+            // model update follows on the UI thread.
+            ActivateWindow(handle);
             _dispatcher.BeginInvoke(() => FollowMouse(handle));
         }
 
@@ -990,10 +996,31 @@ internal sealed class WindowManager : IDisposable
     }
 
     /// <summary>
-    /// Focuses the window under the pointer when it is a managed window of
-    /// the workspace active on its display. A background process may not
-    /// take the foreground on its own, so the target thread's input queue
-    /// is borrowed for the switch.
+    /// Activates the hovered window from the hook callback thread, where
+    /// the foreground lock is relaxed while the input is being dispatched.
+    /// Does nothing for windows the tiling does not manage.
+    /// </summary>
+    private void ActivateWindow(long handle)
+    {
+        if (!FocusFollowsMouse || _disposed || !_managedHandles.Contains(handle))
+            return;
+
+        var hwnd = new IntPtr(handle);
+        var targetThread = Win32.GetWindowThreadProcessId(hwnd, out _);
+        var ownThread = Win32.GetCurrentThreadId();
+        Win32.AttachThreadInput(ownThread, targetThread, true);
+        Win32.SetActiveWindow(hwnd);
+        var foreground = Win32.SetForegroundWindow(hwnd);
+        Win32.BringWindowToTop(hwnd);
+        Win32.AttachThreadInput(ownThread, targetThread, false);
+        if (foreground)
+            AppLog.Info($"ffm: activated 0x{handle:X} '{TitleOf(handle)}'");
+    }
+
+    /// <summary>
+    /// Updates the model for the window under the pointer: focus and tab
+    /// visibility of the workspace active on its display. The Win32
+    /// activation already happened in the hook callback.
     /// </summary>
     private void FollowMouse(long handle)
     {
@@ -1008,6 +1035,9 @@ internal sealed class WindowManager : IDisposable
             (Win32.GetAsyncKeyState(Win32.VK_RBUTTON) & 0x8000) != 0)
             return;
 
+        if (!_managedHandles.Contains(handle))
+            return;
+
         var owner = _workspaces.FindOwner(handle);
         if (owner is null ||
             _workspaces.GetActiveIndex(owner.OutputName) != owner.Index)
@@ -1020,22 +1050,7 @@ internal sealed class WindowManager : IDisposable
             return;
 
         _workspaces.SetFocusedWindow(handle);
-
-        var hwnd = new IntPtr(handle);
-        // The hook gave this process the last input, so the direct call is
-        // allowed; borrow the target thread's input queue only if Windows
-        // still refuses.
-        var foreground = Win32.SetForegroundWindow(hwnd);
-        if (!foreground)
-        {
-            var targetThread = Win32.GetWindowThreadProcessId(hwnd, out _);
-            var ownThread = Win32.GetCurrentThreadId();
-            Win32.AttachThreadInput(ownThread, targetThread, true);
-            foreground = Win32.SetForegroundWindow(hwnd);
-            Win32.AttachThreadInput(ownThread, targetThread, false);
-        }
-        AppLog.Info($"ffm: focused 0x{handle:X} '{TitleOf(handle)}' SetForegroundWindow={foreground}");
-
+        AppLog.Info($"ffm: focused 0x{handle:X} '{TitleOf(handle)}'");
         ApplyLayout();
     }
 
