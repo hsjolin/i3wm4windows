@@ -121,6 +121,11 @@ internal sealed class WindowManager : IDisposable
         {
             _mouseHook = Win32.SetWindowsHookEx(
                 Win32.WH_MOUSE_LL, _mouseProc, Win32.GetModuleHandle(null), 0);
+            AppLog.Info($"focus_follows_mouse on, mouse hook 0x{_mouseHook.ToInt64():X}");
+        }
+        else
+        {
+            AppLog.Info("focus_follows_mouse off");
         }
 
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
@@ -930,12 +935,25 @@ internal sealed class WindowManager : IDisposable
     /// cursor is handed to the UI thread for the focus-follows-mouse
     /// decision.
     /// </summary>
+    private long _mouseMoves;
+
     private IntPtr OnMouseEvent(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0 && wParam.ToInt64() == Win32.WM_MOUSEMOVE)
         {
+            _mouseMoves++;
+            if (_mouseMoves == 1 || _mouseMoves % 2000 == 0)
+                AppLog.Info($"mouse hook alive, moves={_mouseMoves}");
+
             var data = Marshal.PtrToStructure<Win32.MSLLHOOKSTRUCT>(lParam);
-            var handle = Win32.WindowFromPoint(data.pt).ToInt64();
+            var under = Win32.WindowFromPoint(data.pt);
+            if (under == IntPtr.Zero)
+                return Win32.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+
+            // WindowFromPoint returns the deepest child at the point (an
+            // edit control, say); the tiling manages top-level windows.
+            var root = Win32.GetAncestor(under, Win32.GA_ROOT);
+            var handle = (root == IntPtr.Zero ? under : root).ToInt64();
             _dispatcher.BeginInvoke(() => FollowMouse(handle));
         }
 
@@ -956,19 +974,27 @@ internal sealed class WindowManager : IDisposable
             return;
         _mouseOverHandle = handle;
 
+        var managed = _managedHandles.Contains(handle);
+        AppLog.Info($"ffm hover 0x{handle:X} managed={managed} title='{TitleOf(handle)}'");
+        if (!managed)
+            return;
+
         // No focus stealing in the middle of a mouse drag.
         if ((Win32.GetAsyncKeyState(Win32.VK_LBUTTON) & 0x8000) != 0 ||
             (Win32.GetAsyncKeyState(Win32.VK_RBUTTON) & 0x8000) != 0)
+        {
+            AppLog.Info("ffm: skipping, mouse button held");
             return;
-
-        if (!_managedHandles.Contains(handle))
-            return;
+        }
 
         var owner = _workspaces.FindOwner(handle);
         if (owner is null ||
             owner.FocusedWindowHandle == handle ||
             _workspaces.GetActiveIndex(owner.OutputName) != owner.Index)
+        {
+            AppLog.Info($"ffm: skipping, owner={owner?.Index} focused={owner?.FocusedWindowHandle:X} active={_workspaces.GetActiveIndex(owner?.OutputName ?? "")}");
             return;
+        }
 
         _workspaces.SetFocusedWindow(handle);
 
@@ -976,8 +1002,9 @@ internal sealed class WindowManager : IDisposable
         var targetThread = Win32.GetWindowThreadProcessId(hwnd, out _);
         var ownThread = Win32.GetCurrentThreadId();
         Win32.AttachThreadInput(ownThread, targetThread, true);
-        Win32.SetForegroundWindow(hwnd);
+        var foreground = Win32.SetForegroundWindow(hwnd);
         Win32.AttachThreadInput(ownThread, targetThread, false);
+        AppLog.Info($"ffm: focused 0x{handle:X} '{TitleOf(handle)}' SetForegroundWindow={foreground}");
 
         ApplyLayout();
     }
