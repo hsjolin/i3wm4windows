@@ -72,6 +72,8 @@ internal sealed class WindowManager : IDisposable
     public bool FocusFollowsMouse { get; set; }
 
     private IntPtr _mouseHook;
+    private Thread? _mouseHookThread;
+    private volatile uint _mouseHookThreadId;
     private readonly Win32.LowLevelMouseProc _mouseProc;
     private long _mouseOverHandle;
 
@@ -118,15 +120,9 @@ internal sealed class WindowManager : IDisposable
             Win32.WINEVENT_OUTOFCONTEXT | Win32.WINEVENT_SKIPOWNPROCESS);
 
         if (FocusFollowsMouse)
-        {
-            _mouseHook = Win32.SetWindowsHookEx(
-                Win32.WH_MOUSE_LL, _mouseProc, Win32.GetModuleHandle(null), 0);
-            AppLog.Info($"focus_follows_mouse on, mouse hook 0x{_mouseHook.ToInt64():X}");
-        }
+            StartMouseHook();
         else
-        {
             AppLog.Info("focus_follows_mouse off");
-        }
 
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
@@ -842,6 +838,10 @@ internal sealed class WindowManager : IDisposable
             _mouseHook = IntPtr.Zero;
         }
 
+        // Wake the hook thread's pump so it can exit.
+        if (_mouseHookThreadId != 0)
+            Win32.PostThreadMessage(_mouseHookThreadId, Win32.WM_QUIT, IntPtr.Zero, IntPtr.Zero);
+
         _bar.Dispose();
     }
 
@@ -935,16 +935,45 @@ internal sealed class WindowManager : IDisposable
     /// cursor is handed to the UI thread for the focus-follows-mouse
     /// decision.
     /// </summary>
-    private long _mouseMoves;
+    /// <summary>
+    /// The low-level mouse hook needs a message pump on its installing
+    /// thread, like the keyboard hook: on the busy UI thread it would
+    /// fire only while the dispatcher happens to pump, so it gets a
+    /// dedicated thread of its own.
+    /// </summary>
+    private void StartMouseHook()
+    {
+        _mouseHookThread = new Thread(RunMouseHook)
+        {
+            IsBackground = true,
+            Name = "i3vm4windows.MouseHook",
+        };
+        _mouseHookThread.Start();
+    }
+
+    private void RunMouseHook()
+    {
+        _mouseHookThreadId = (uint)Environment.CurrentManagedThreadId;
+        _mouseHook = Win32.SetWindowsHookEx(
+            Win32.WH_MOUSE_LL, _mouseProc, Win32.GetModuleHandle(null), 0);
+        AppLog.Info($"focus_follows_mouse on, mouse hook 0x{_mouseHook.ToInt64():X} on thread {_mouseHookThreadId}");
+
+        while (Win32.GetMessage(out _, IntPtr.Zero, 0, 0) > 0)
+        {
+        }
+
+        if (_mouseHook != IntPtr.Zero)
+        {
+            Win32.UnhookWindowsHookEx(_mouseHook);
+            _mouseHook = IntPtr.Zero;
+        }
+    }
+
 
     private IntPtr OnMouseEvent(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0 && wParam.ToInt64() == Win32.WM_MOUSEMOVE)
         {
-            _mouseMoves++;
-            if (_mouseMoves == 1 || _mouseMoves % 2000 == 0)
-                AppLog.Info($"mouse hook alive, moves={_mouseMoves}");
-
             var data = Marshal.PtrToStructure<Win32.MSLLHOOKSTRUCT>(lParam);
             var under = Win32.WindowFromPoint(data.pt);
             if (under == IntPtr.Zero)
@@ -974,36 +1003,37 @@ internal sealed class WindowManager : IDisposable
             return;
         _mouseOverHandle = handle;
 
-        var managed = _managedHandles.Contains(handle);
-        AppLog.Info($"ffm hover 0x{handle:X} managed={managed} title='{TitleOf(handle)}'");
-        if (!managed)
-            return;
-
         // No focus stealing in the middle of a mouse drag.
         if ((Win32.GetAsyncKeyState(Win32.VK_LBUTTON) & 0x8000) != 0 ||
             (Win32.GetAsyncKeyState(Win32.VK_RBUTTON) & 0x8000) != 0)
-        {
-            AppLog.Info("ffm: skipping, mouse button held");
             return;
-        }
 
         var owner = _workspaces.FindOwner(handle);
         if (owner is null ||
-            owner.FocusedWindowHandle == handle ||
             _workspaces.GetActiveIndex(owner.OutputName) != owner.Index)
-        {
-            AppLog.Info($"ffm: skipping, owner={owner?.Index} focused={owner?.FocusedWindowHandle:X} active={_workspaces.GetActiveIndex(owner?.OutputName ?? "")}");
             return;
-        }
+
+        // The workspace's focused handle can be stale when the real
+        // foreground is an unmanaged window, so compare against the
+        // actual foreground instead.
+        if (Win32.GetForegroundWindow().ToInt64() == handle)
+            return;
 
         _workspaces.SetFocusedWindow(handle);
 
         var hwnd = new IntPtr(handle);
-        var targetThread = Win32.GetWindowThreadProcessId(hwnd, out _);
-        var ownThread = Win32.GetCurrentThreadId();
-        Win32.AttachThreadInput(ownThread, targetThread, true);
+        // The hook gave this process the last input, so the direct call is
+        // allowed; borrow the target thread's input queue only if Windows
+        // still refuses.
         var foreground = Win32.SetForegroundWindow(hwnd);
-        Win32.AttachThreadInput(ownThread, targetThread, false);
+        if (!foreground)
+        {
+            var targetThread = Win32.GetWindowThreadProcessId(hwnd, out _);
+            var ownThread = Win32.GetCurrentThreadId();
+            Win32.AttachThreadInput(ownThread, targetThread, true);
+            foreground = Win32.SetForegroundWindow(hwnd);
+            Win32.AttachThreadInput(ownThread, targetThread, false);
+        }
         AppLog.Info($"ffm: focused 0x{handle:X} '{TitleOf(handle)}' SetForegroundWindow={foreground}");
 
         ApplyLayout();
