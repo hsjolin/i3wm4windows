@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using i3vm4windows.Config.Extensions;
 
 namespace i3vm4windows.Config;
 
@@ -18,66 +19,6 @@ internal static class ConfigGrammar
         for (var i = 0; i < rest.Length; i++)
             rest[i] = parameters[from + i];
         return rest;
-    }
-
-    /// <summary>
-    /// Splits a key combination like "$mod+Shift+1" into its modifiers and
-    /// the normalized key name.
-    /// </summary>
-    public static bool TryParseKeys(string keys, out Modifiers modifiers, out string key)
-    {
-        modifiers = Modifiers.None;
-        var parts = keys.Split('+');
-
-        foreach (var part in parts[..^1])
-        {
-            switch (part.ToLowerInvariant())
-            {
-                case "mod1" or "alt":
-                    modifiers |= Modifiers.Alt;
-                    break;
-                case "mod4" or "win" or "super":
-                    modifiers |= Modifiers.Win;
-                    break;
-                case "shift":
-                    modifiers |= Modifiers.Shift;
-                    break;
-                case "ctrl" or "control":
-                    modifiers |= Modifiers.Control;
-                    break;
-                default:
-                    key = "";
-                    return false;
-            }
-        }
-
-        key = NormalizeKey(parts[^1]);
-        return key is not null;
-    }
-
-    /// <summary>Normalizes an i3 key name to a canonical one, or null.</summary>
-    public static string? NormalizeKey(string name)
-    {
-        if (name.Length == 1)
-        {
-            if (char.IsAsciiDigit(name[0]))
-                return name;
-            if (char.IsAsciiLetter(name[0]))
-                return char.ToUpperInvariant(name[0]).ToString();
-        }
-
-        return name.ToLowerInvariant() switch
-        {
-            "left" => "Left",
-            "right" => "Right",
-            "up" => "Up",
-            "down" => "Down",
-            "enter" or "return" => "Enter",
-            "space" => "Space",
-            "tab" => "Tab",
-            "escape" => "Escape",
-            _ => null,
-        };
     }
 
     public static bool TryParseWorkspace(string name, out int index)

@@ -5,6 +5,7 @@ using System.Windows.Input;
 using i3vm4windows.App.Interop;
 using i3vm4windows.App.Services;
 using i3vm4windows.Config;
+using i3vm4windows.Config.Extensions;
 using i3vm4windows.Core;
 using Binding = i3vm4windows.Config.Binding;
 
@@ -154,7 +155,7 @@ public partial class App : System.Windows.Application
         var nextId = 1;
         foreach (var binding in config.Bindings)
         {
-            if (ToWpfKey(binding.Key) is not { } key)
+            if (!binding.Key.TryConvertToEnum<Key>(out var key))
                 continue;
 
             var id = nextId++;
@@ -197,36 +198,14 @@ public partial class App : System.Windows.Application
         var registered = new List<(int Id, Win32.Modifiers Modifiers, Key Key)>();
         foreach (var (id, binding) in bindings)
         {
-            if (ToWpfKey(binding.Key) is { } key)
+            if (binding.Key.TryConvertToEnum<Key>(out var key))
                 registered.Add((id, (Win32.Modifiers)binding.Modifiers, key));
         }
 
         _hotkeyHost?.SetModeBindings(registered);
     }
 
-    private static Key? ToWpfKey(string name)
-    {
-        if (name.Length == 1)
-        {
-            if (char.IsAsciiDigit(name[0]))
-                return Key.D0 + (name[0] - '0');
-            if (char.IsAsciiLetter(name[0]))
-                return Key.A + (char.ToUpperInvariant(name[0]) - 'A');
-        }
 
-        return name switch
-        {
-            "Left" => Key.Left,
-            "Right" => Key.Right,
-            "Up" => Key.Up,
-            "Down" => Key.Down,
-            "Enter" => Key.Enter,
-            "Space" => Key.Space,
-            "Tab" => Key.Tab,
-            "Escape" => Key.Escape,
-            _ => null,
-        };
-    }
 
     private void HandleHotkey(int id)
     {

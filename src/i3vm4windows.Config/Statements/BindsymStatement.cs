@@ -1,3 +1,5 @@
+using i3vm4windows.Config.Extensions;
+
 namespace i3vm4windows.Config.Statements;
 
 /// <summary>
@@ -47,7 +49,7 @@ public sealed class BindsymStatement : TopLevelStatement
             return;
         }
 
-        if (!ConfigGrammar.TryParseKeys(keys, out var modifiers, out var key))
+        if (!keys.TryParseKeys(out var modifiers, out var key))
         {
             context.Warn($"Unsupported key combination: {line}");
             return;
