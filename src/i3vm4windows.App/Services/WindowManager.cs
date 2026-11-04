@@ -983,6 +983,9 @@ internal sealed class WindowManager : IDisposable
             // edit control, say); the tiling manages top-level windows.
             var root = Win32.GetAncestor(under, Win32.GA_ROOT);
             var handle = (root == IntPtr.Zero ? under : root).ToInt64();
+            if (handle == _mouseOverHandle)
+                return Win32.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+            _mouseOverHandle = handle;
 
             // The foreground switch happens here, in the hook callback,
             // while the input is still being dispatched: a background
@@ -1003,6 +1006,8 @@ internal sealed class WindowManager : IDisposable
     private void ActivateWindow(long handle)
     {
         if (!FocusFollowsMouse || _disposed || !_managedHandles.Contains(handle))
+            return;
+        if (Win32.GetForegroundWindow().ToInt64() == handle)
             return;
 
         var hwnd = new IntPtr(handle);
@@ -1026,9 +1031,6 @@ internal sealed class WindowManager : IDisposable
     {
         if (!FocusFollowsMouse || _disposed)
             return;
-        if (handle == _mouseOverHandle)
-            return;
-        _mouseOverHandle = handle;
 
         // No focus stealing in the middle of a mouse drag.
         if ((Win32.GetAsyncKeyState(Win32.VK_LBUTTON) & 0x8000) != 0 ||
@@ -1043,10 +1045,9 @@ internal sealed class WindowManager : IDisposable
             _workspaces.GetActiveIndex(owner.OutputName) != owner.Index)
             return;
 
-        // The workspace's focused handle can be stale when the real
-        // foreground is an unmanaged window, so compare against the
-        // actual foreground instead.
-        if (Win32.GetForegroundWindow().ToInt64() == handle)
+        // The Win32 activation already happened in the hook callback, so
+        // compare against the model's focus, not the real foreground.
+        if (owner.FocusedWindowHandle == handle)
             return;
 
         _workspaces.SetFocusedWindow(handle);
