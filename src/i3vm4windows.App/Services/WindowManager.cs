@@ -972,31 +972,44 @@ internal sealed class WindowManager : IDisposable
 
     private IntPtr OnMouseEvent(int nCode, IntPtr wParam, IntPtr lParam)
     {
-        if (nCode >= 0 && wParam.ToInt64() == Win32.WM_MOUSEMOVE)
+        if (nCode < 0 || wParam.ToInt64() != Win32.WM_MOUSEMOVE)
         {
-            var data = Marshal.PtrToStructure<Win32.MSLLHOOKSTRUCT>(lParam);
-            var under = Win32.WindowFromPoint(data.pt);
-            if (under == IntPtr.Zero)
-                return Win32.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
-
-            // WindowFromPoint returns the deepest child at the point (an
-            // edit control, say); the tiling manages top-level windows.
-            var root = Win32.GetAncestor(under, Win32.GA_ROOT);
-            var handle = (root == IntPtr.Zero ? under : root).ToInt64();
-            if (handle == _mouseOverHandle)
-                return Win32.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
-            _mouseOverHandle = handle;
-
-            // The foreground switch happens here, in the hook callback,
-            // while the input is still being dispatched: a background
-            // process gets the foreground lock relaxed only then. The
-            // model update follows on the UI thread.
-            ActivateWindow(handle);
-            _dispatcher.BeginInvoke(() => FollowMouse(handle));
+            return Win32.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
         }
+        
+        var data = Marshal.PtrToStructure<Win32.MSLLHOOKSTRUCT>(lParam);
+        var under = Win32.WindowFromPoint(data.pt);
+        if (under == IntPtr.Zero)
+        {
+            return Win32.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+        }
+
+        // WindowFromPoint returns the deepest child at the point (an
+        // edit control, say); the tiling manages top-level windows.
+        var root = Win32.GetAncestor(under, Win32.GA_ROOT);
+        var handle = (root == IntPtr.Zero ? under : root).ToInt64();
+        if (handle == _mouseOverHandle)
+        {
+            return Win32.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+        }
+        
+        _mouseOverHandle = handle;
+
+        // The foreground switch happens here, in the hook callback,
+        // while the input is still being dispatched: a background
+        // process gets the foreground lock relaxed only then. The
+        // model update follows on the UI thread.
+        ActivateWindow(handle);
+        _dispatcher.BeginInvoke(() => FollowMouse(handle));
 
         return Win32.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
     }
+
+    /// <summary>Whether the tiling owns the window closely enough that
+    /// hovering it should focus it: tiled windows and windows the user
+    /// floated explicitly.</summary>
+    private bool IsHoverable(long handle) =>
+        _managedHandles.Contains(handle) || _floatedByUser.Contains(handle);
 
     /// <summary>
     /// Activates the hovered window from the hook callback thread, where
@@ -1005,7 +1018,7 @@ internal sealed class WindowManager : IDisposable
     /// </summary>
     private void ActivateWindow(long handle)
     {
-        if (!FocusFollowsMouse || _disposed || !_managedHandles.Contains(handle))
+        if (!FocusFollowsMouse || _disposed || !IsHoverable(handle))
             return;
         if (Win32.GetForegroundWindow().ToInt64() == handle)
             return;
@@ -1037,12 +1050,14 @@ internal sealed class WindowManager : IDisposable
             (Win32.GetAsyncKeyState(Win32.VK_RBUTTON) & 0x8000) != 0)
             return;
 
-        if (!_managedHandles.Contains(handle))
+        if (!IsHoverable(handle))
             return;
 
         var owner = _workspaces.FindOwner(handle);
-        if (owner is null ||
-            _workspaces.GetActiveIndex(owner.OutputName) != owner.Index)
+        if (owner is null)
+            return; // floating window: the activation above is all it needs
+
+        if (_workspaces.GetActiveIndex(owner.OutputName) != owner.Index)
             return;
 
         // The Win32 activation already happened in the hook callback, so
