@@ -266,6 +266,11 @@ internal static class Win32
     public static extern uint GetCurrentThreadId();
 
     [DllImport("user32.dll")]
+    public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extraInfo);
+
+    public const uint KEYEVENTF_KEYUP = 0x0002;
+
+    [DllImport("user32.dll")]
     public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool attach);
 
     [DllImport("user32.dll")]

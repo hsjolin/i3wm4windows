@@ -973,18 +973,12 @@ internal sealed class WindowManager : IDisposable
     }
 
 
-    private long _mouseMoves;
-
     private IntPtr OnMouseEvent(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode < 0 || wParam.ToInt64() != Win32.WM_MOUSEMOVE)
         {
             return Win32.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
         }
-
-        _mouseMoves++;
-        if (_mouseMoves % 500 == 1)
-            AppLog.Info($"mouse hook alive, moves={_mouseMoves}");
 
         var data = Marshal.PtrToStructure<Win32.MSLLHOOKSTRUCT>(lParam);
         var under = Win32.WindowFromPoint(data.pt);
@@ -999,14 +993,21 @@ internal sealed class WindowManager : IDisposable
         var handle = (root == IntPtr.Zero ? under : root).ToInt64();
         if (handle == _mouseOverHandle)
         {
+            // A click or an app can move the foreground elsewhere while the
+            // pointer stays put; re-assert focus then, but never take it
+            // from a window outside the tiling (menus, start menu, dialogs).
+            var currentForeground = Win32.GetForegroundWindow().ToInt64();
+            if (currentForeground == handle || !IsHoverable(currentForeground))
+            {
+                return Win32.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
+            }
+
+            ActivateWindow(handle);
+            _dispatcher.BeginInvoke(() => FollowMouse(handle));
             return Win32.CallNextHookEx(_mouseHook, nCode, wParam, lParam);
         }
-        
-        _mouseOverHandle = handle;
 
-        var hoverable = IsHoverable(handle);
-        var fg = Win32.GetForegroundWindow().ToInt64();
-        AppLog.Info($"ffm hover 0x{handle:X} '{TitleOf(handle)}' hoverable={hoverable} fg={fg:X}");
+        _mouseOverHandle = handle;
 
         // The foreground switch happens here, in the hook callback,
         // while the input is still being dispatched: a background
@@ -1048,13 +1049,31 @@ internal sealed class WindowManager : IDisposable
         var hwnd = new IntPtr(handle);
         var targetThread = Win32.GetWindowThreadProcessId(hwnd, out _);
         var ownThread = Win32.GetCurrentThreadId();
+        var foregroundThread = Win32.GetWindowThreadProcessId(Win32.GetForegroundWindow(), out _);
         var attached = Win32.AttachThreadInput(ownThread, targetThread, true);
+        var attachedToForeground = foregroundThread != 0 && foregroundThread != targetThread &&
+            foregroundThread != ownThread && Win32.AttachThreadInput(ownThread, foregroundThread, true);
         Win32.SetActiveWindow(hwnd);
         var foreground = Win32.SetForegroundWindow(hwnd);
         var error = Marshal.GetLastWin32Error();
+        if (!foreground)
+        {
+            // A synthetic Alt tap makes the system treat this process as
+            // the recipient of the last input, lifting the foreground lock.
+            Win32.keybd_event((byte)Win32.VK_MENU, 0, 0, UIntPtr.Zero);
+            Win32.keybd_event((byte)Win32.VK_MENU, 0, Win32.KEYEVENTF_KEYUP, UIntPtr.Zero);
+            foreground = Win32.SetForegroundWindow(hwnd);
+        }
+
         Win32.BringWindowToTop(hwnd);
+        if (attachedToForeground)
+        {
+            Win32.AttachThreadInput(ownThread, foregroundThread, false);
+        }
+
         Win32.AttachThreadInput(ownThread, targetThread, false);
-        AppLog.Info($"activate 0x{handle:X} -> SetForegroundWindow={foreground} attach={attached} lastError={error}");
+        if (!foreground)
+            AppLog.Warn($"activate 0x{handle:X} refused: SetForegroundWindow=False attach={attached} lastError={error}");
         return foreground;
     }
 
@@ -1089,20 +1108,14 @@ internal sealed class WindowManager : IDisposable
             return;
 
         if (!IsHoverable(handle))
-        {
-            AppLog.Info("ffm follow: not hoverable");
             return;
-        }
 
         var owner = _workspaces.FindOwner(handle);
         if (owner is null)
             return; // floating window: the activation above is all it needs
 
         if (_workspaces.GetActiveIndex(owner.OutputName) != owner.Index)
-        {
-            AppLog.Info($"ffm follow: owner={owner.Index} output={owner.OutputName} active={_workspaces.GetActiveIndex(owner.OutputName)}");
             return;
-        }
 
         // The Win32 activation already happened in the hook callback, so
         // compare against the model's focus, not the real foreground. The
