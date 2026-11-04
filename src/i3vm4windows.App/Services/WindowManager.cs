@@ -1006,10 +1006,24 @@ internal sealed class WindowManager : IDisposable
     }
 
     /// <summary>Whether the tiling owns the window closely enough that
-    /// hovering it should focus it: tiled windows and windows the user
-    /// floated explicitly.</summary>
-    private bool IsHoverable(long handle) =>
-        _managedHandles.Contains(handle) || _floatedByUser.Contains(handle);
+    /// hovering it should focus it: tiled windows, windows the user
+    /// floated explicitly, and windows a for_window floating rule leaves
+    /// alone.</summary>
+    private bool IsHoverable(long handle)
+    {
+        if (_managedHandles.Contains(handle) || _floatedByUser.Contains(handle))
+            return true;
+
+        var hwnd = new IntPtr(handle);
+        var className = new StringBuilder(256);
+        Win32.GetClassName(hwnd, className, className.Capacity);
+        var title = new StringBuilder(512);
+        Win32.GetWindowText(hwnd, title, title.Capacity);
+
+        return _rules.Any(rule =>
+            rule.Action == WindowRuleAction.Floating &&
+            rule.Matches(className.ToString(), title.ToString()));
+    }
 
     /// <summary>
     /// Activates the hovered window from the hook callback thread, where
@@ -1061,12 +1075,15 @@ internal sealed class WindowManager : IDisposable
             return;
 
         // The Win32 activation already happened in the hook callback, so
-        // compare against the model's focus, not the real foreground.
-        if (owner.FocusedWindowHandle == handle)
-            return;
+        // compare against the model's focus, not the real foreground. The
+        // layout pass must run either way: the foreground event may have
+        // updated the model without ever re-applying the layout.
+        if (owner.FocusedWindowHandle != handle)
+        {
+            _workspaces.SetFocusedWindow(handle);
+            AppLog.Info($"ffm: focused 0x{handle:X} '{TitleOf(handle)}'");
+        }
 
-        _workspaces.SetFocusedWindow(handle);
-        AppLog.Info($"ffm: focused 0x{handle:X} '{TitleOf(handle)}'");
         ApplyLayout();
     }
 
