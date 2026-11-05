@@ -13,13 +13,18 @@ public sealed class LayoutStatement : CommandStatement
         if (parameters.Count == 1)
         {
             if (parameters[0].Equals("tabbed", StringComparison.OrdinalIgnoreCase))
+            {
                 context.Intent = new CommandIntent(
                     Action: ConfigAction.SetTabbed,
                     Run: (runtime, _) => runtime.SetTabbed());
+            }
             else if (parameters[0].Equals("default", StringComparison.OrdinalIgnoreCase))
+            {
                 context.Intent = new CommandIntent(
                     Action: ConfigAction.SetSplit,
                     Run: (runtime, _) => runtime.SetSplit());
+            }
+
             return;
         }
 

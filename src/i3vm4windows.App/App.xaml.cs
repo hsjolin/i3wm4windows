@@ -37,7 +37,10 @@ public partial class App : System.Windows.Application
 
         var config = LoadConfig(_configPath);
         foreach (var warning in config.Warnings)
+        {
             AppLog.Warn($"configuration: {warning}");
+        }
+
         AppLog.Info($"configuration: {config.Bindings.Count} bindings, " +
             $"{config.Rules.Count} rules, {config.Exec.Count} autostarts");
 
@@ -66,7 +69,9 @@ public partial class App : System.Windows.Application
         // i3's autostart: exec directives run when the app starts with
         // this configuration; a reload does not run them again.
         foreach (var command in config.Exec)
+        {
             Launcher.Start(command);
+        }
 
         _trayIcon = CreateTrayIcon();
     }
@@ -99,7 +104,9 @@ public partial class App : System.Windows.Application
         {
             var config = I3ConfigParser.Parse(File.ReadAllText(path));
             if (config.Bindings.Count > 0)
+            {
                 return config;
+            }
 
             AppLog.Warn($"configuration: {path} has no usable bindings");
         }
@@ -153,13 +160,17 @@ public partial class App : System.Windows.Application
     private void RegisterHotkeys(I3Config config)
     {
         if (_hotkeyHost is null)
+        {
             return;
+        }
 
         var nextId = 1;
         foreach (var binding in config.Bindings)
         {
             if (!binding.Key.TryConvertToEnum<Key>(out var key))
+            {
                 continue;
+            }
 
             var id = nextId++;
             if (binding.Mode == "default")
@@ -202,7 +213,9 @@ public partial class App : System.Windows.Application
         foreach (var (id, binding) in bindings)
         {
             if (binding.Key.TryConvertToEnum<Key>(out var key))
+            {
                 registered.Add((id, (Win32.Modifiers)binding.Modifiers, key));
+            }
         }
 
         _hotkeyHost?.SetModeBindings(registered);
@@ -213,7 +226,9 @@ public partial class App : System.Windows.Application
     private void HandleHotkey(int id)
     {
         if (!_bindings.TryGetValue(id, out var binding))
+        {
             return;
+        }
 
         AppLog.Info($"hotkey: {binding.Action} ({binding.Key}, {binding.Mode} mode)");
 

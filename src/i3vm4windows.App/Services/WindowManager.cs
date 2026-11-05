@@ -120,9 +120,13 @@ internal sealed class WindowManager : IDisposable
             Win32.WINEVENT_OUTOFCONTEXT | Win32.WINEVENT_SKIPOWNPROCESS);
 
         if (FocusFollowsMouse)
+        {
             StartMouseHook();
+        }
         else
+        {
             AppLog.Info("focus_follows_mouse off");
+        }
 
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
@@ -142,7 +146,10 @@ internal sealed class WindowManager : IDisposable
         Win32.EnumWindows((hwnd, _) =>
         {
             if (Win32.IsWindow(hwnd))
+            {
                 _scratchpadSeen.Add(hwnd.ToInt64());
+            }
+
             return true;
         }, IntPtr.Zero);
     }
@@ -155,7 +162,9 @@ internal sealed class WindowManager : IDisposable
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
         if (_disposed)
+        {
             return;
+        }
 
         AppLog.Info("display settings changed; resyncing");
 
@@ -180,7 +189,9 @@ internal sealed class WindowManager : IDisposable
     {
         var handle = hwnd.ToInt64();
         if (!_managedHandles.Contains(handle))
+        {
             return;
+        }
 
         UnmanageWindow(handle);
         _floatedByUser.Add(handle);
@@ -190,7 +201,9 @@ internal sealed class WindowManager : IDisposable
     public void RefreshWindows()
     {
         if (_disposed)
+        {
             return;
+        }
 
         try
         {
@@ -234,7 +247,9 @@ internal sealed class WindowManager : IDisposable
         for (var pass = 0; pass < 4; pass++)
         {
             if (!ApplyLayoutPass())
+            {
                 break;
+            }
         }
 
         // The bar shows the tab order and the active tab, which a window
@@ -257,7 +272,9 @@ internal sealed class WindowManager : IDisposable
             {
                 var hwnd = new IntPtr(handle);
                 if (Win32.IsIconic(hwnd) || !Win32.GetWindowRect(hwnd, out var current))
+                {
                     continue;
+                }
 
                 // A window that just became visible (an activated tab) shows
                 // first; members without an area hide after the loop.
@@ -311,7 +328,9 @@ internal sealed class WindowManager : IDisposable
             foreach (var handle in active.WindowHandles)
             {
                 if (assigned.Contains(handle))
+                {
                     continue;
+                }
 
                 var hwnd = new IntPtr(handle);
                 if (Win32.IsWindowVisible(hwnd))
@@ -329,14 +348,18 @@ internal sealed class WindowManager : IDisposable
     {
         var output = ActiveMonitor().DeviceName;
         if (!_workspaces.FocusRelative(output, offset))
+        {
             return;
+        }
 
         // In a tabbed container the newly focused window had no area; the
         // re-applied layout shows it and hides the previous tab.
         ApplyLayout();
 
         if (_workspaces.ActiveOn(output).FocusedWindowHandle is { } handle)
+        {
             ActivateForeground(handle);
+        }
 
         // The pointer follows the focus, like the workspace switch does.
         WarpCursorToWorkspace(output);
@@ -345,7 +368,9 @@ internal sealed class WindowManager : IDisposable
     public void MoveFocused(int offset)
     {
         if (_workspaces.MoveFocused(ActiveMonitor().DeviceName, offset))
+        {
             ApplyLayout();
+        }
     }
 
     public void ToggleOrientation()
@@ -384,7 +409,9 @@ internal sealed class WindowManager : IDisposable
     {
         var foreground = Win32.GetForegroundWindow();
         if (foreground == IntPtr.Zero)
+        {
             return;
+        }
 
         var handle = foreground.ToInt64();
         if (_managedHandles.Contains(handle))
@@ -411,7 +438,9 @@ internal sealed class WindowManager : IDisposable
         }
 
         if (!IsTileable(foreground, requireVisible: true, ignoreFloatingRules: true))
+        {
             return;
+        }
 
         _floatedByUser.Remove(handle);
         _workspaces.AddWindow(handle, ActiveMonitor().DeviceName);
@@ -447,7 +476,9 @@ internal sealed class WindowManager : IDisposable
         }
 
         if (FindRuleMatch(rule, requireVisible: false) is { } hidden)
+        {
             ShowScratchpad(hidden, output, active);
+        }
     }
 
     /// <summary>
@@ -498,11 +529,15 @@ internal sealed class WindowManager : IDisposable
         Win32.EnumWindows((hwnd, _) =>
         {
             if (!Win32.IsWindow(hwnd) || Win32.IsWindowVisible(hwnd) != requireVisible)
+            {
                 return true;
+            }
 
             Win32.GetWindowThreadProcessId(hwnd, out var processId);
             if (processId == _ownProcessId)
+            {
                 return true;
+            }
 
             var className = new StringBuilder(256);
             Win32.GetClassName(hwnd, className, className.Capacity);
@@ -523,7 +558,9 @@ internal sealed class WindowManager : IDisposable
     public void CloseFocused()
     {
         if (_workspaces.ActiveOn(ActiveMonitor().DeviceName).FocusedWindowHandle is { } handle)
+        {
             Win32.PostMessage(new IntPtr(handle), Win32.WM_CLOSE, IntPtr.Zero, IntPtr.Zero);
+        }
     }
 
     /// <summary>
@@ -555,7 +592,9 @@ internal sealed class WindowManager : IDisposable
         foreach (var change in result.Changes)
         {
             if (!change.Changed)
+            {
                 continue;
+            }
 
             if (_workspaces.TryGet(change.PreviousIndex) is { } previous)
             {
@@ -580,7 +619,9 @@ internal sealed class WindowManager : IDisposable
 
         // The switch's effect shows through the bar's highlight.
         if (_workspaces.TryGet(index)?.FocusedWindowHandle is { } focused)
+        {
             ActivateForeground(focused);
+        }
 
         // The pointer follows the switch, like i3 warps it into the newly
         // focused window of the new workspace.
@@ -596,10 +637,14 @@ internal sealed class WindowManager : IDisposable
     {
         var output = ActiveMonitor().DeviceName;
         if (_workspaces.ActiveOn(output).FocusedWindowHandle is not { } handle)
+        {
             return;
+        }
 
         if (!Win32.GetWindowRect(new IntPtr(handle), out var rect))
+        {
             return;
+        }
 
         var size = axis == ResizeAxis.Width ? rect.Right - rect.Left : rect.Bottom - rect.Top;
         if (_workspaces.ApplyUserResize(handle, axis, size + delta))
@@ -645,11 +690,15 @@ internal sealed class WindowManager : IDisposable
     {
         var output = ActiveMonitor().DeviceName;
         if (_workspaces.MoveFocusedTo(index, output) is not { } moved)
+        {
             return;
+        }
 
         var visible = _workspaces.GetActiveIndex(moved.Target.OutputName) == moved.Target.Index;
         if (visible)
+        {
             Win32.ShowWindow(new IntPtr(moved.WindowHandle), Win32.SW_SHOW);
+        }
         else
         {
             Win32.ShowWindow(new IntPtr(moved.WindowHandle), Win32.SW_HIDE);
@@ -657,7 +706,9 @@ internal sealed class WindowManager : IDisposable
         }
 
         if (_workspaces.ActiveOn(output).FocusedWindowHandle is { } next)
+        {
             ActivateForeground(next);
+        }
 
         ApplyLayout();
     }
@@ -674,7 +725,9 @@ internal sealed class WindowManager : IDisposable
             .ThenBy(m => m.WorkArea.Y)
             .ToList();
         if (monitors.Count < 2)
+        {
             return;
+        }
 
         var source = ActiveMonitor();
         var target = monitors[(monitors.IndexOf(source) + 1) % monitors.Count];
@@ -685,7 +738,9 @@ internal sealed class WindowManager : IDisposable
 
         var move = _workspaces.MoveActiveWorkspaceToOutput(source.DeviceName, target.DeviceName);
         if (move is null)
+        {
             return;
+        }
 
         if (previousOnTarget is int previous &&
             previous != move.MovedIndex &&
@@ -729,7 +784,9 @@ internal sealed class WindowManager : IDisposable
         NotifyBar(target.DeviceName);
 
         if (_workspaces.TryGet(move.MovedIndex)?.FocusedWindowHandle is { } focused)
+        {
             ActivateForeground(focused);
+        }
 
         // The pointer follows the workspace to the display it moved to,
         // like the workspace switch does.
@@ -743,7 +800,9 @@ internal sealed class WindowManager : IDisposable
     private void NotifyBar(string deviceName)
     {
         if (MonitorByName(deviceName) is not { } monitor)
+        {
             return;
+        }
 
         var (workspaces, active) = WorkspaceView(deviceName);
         _bar.Update(deviceName, monitor.WorkArea, workspaces, active, TabsOf(deviceName));
@@ -770,7 +829,9 @@ internal sealed class WindowManager : IDisposable
     private void RefreshIndicators()
     {
         foreach (var monitor in _monitors.Values)
+        {
             NotifyBar(monitor.DeviceName);
+        }
 
         _bar.CloseMissing(_monitors.Values.Select(m => m.DeviceName).ToList());
     }
@@ -812,7 +873,9 @@ internal sealed class WindowManager : IDisposable
     public void Dispose()
     {
         if (_disposed)
+        {
             return;
+        }
 
         _disposed = true;
         _refreshTimer.Stop();
@@ -840,7 +903,9 @@ internal sealed class WindowManager : IDisposable
 
         // Wake the hook thread's pump so it can exit.
         if (_mouseHookThreadId != 0)
+        {
             Win32.PostThreadMessage(_mouseHookThreadId, Win32.WM_QUIT, IntPtr.Zero, IntPtr.Zero);
+        }
 
         _bar.Dispose();
     }
@@ -849,7 +914,9 @@ internal sealed class WindowManager : IDisposable
         IntPtr hook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
     {
         if (idObject != Win32.OBJID_WINDOW || idChild != 0)
+        {
             return;
+        }
 
         switch (eventType)
         {
@@ -893,7 +960,10 @@ internal sealed class WindowManager : IDisposable
             case Win32.EVENT_OBJECT_LOCATIONCHANGE:
                 // Only managed windows matter; everything else moves freely.
                 if (_managedHandles.Contains(hwnd.ToInt64()))
+                {
                     DebounceRefresh();
+                }
+
                 break;
         }
     }
@@ -919,12 +989,16 @@ internal sealed class WindowManager : IDisposable
         _deadForegroundHandle = 0;
         _deadForegroundWorkspace = null;
         if (dead == 0 || workspaceIndex is not { } index)
+        {
             return;
+        }
 
         if (_workspaces.TryGet(index) is not { } workspace ||
             workspace.FocusedWindowHandle is not { } next ||
             _workspaces.GetActiveIndex(workspace.OutputName) != index)
+        {
             return;
+        }
 
         ActivateForeground(next);
         ApplyLayout();
@@ -1026,7 +1100,9 @@ internal sealed class WindowManager : IDisposable
     private bool IsHoverable(long handle)
     {
         if (_managedHandles.Contains(handle) || _floatedByUser.Contains(handle))
+        {
             return true;
+        }
 
         var hwnd = new IntPtr(handle);
         var className = new StringBuilder(256);
@@ -1073,7 +1149,10 @@ internal sealed class WindowManager : IDisposable
 
         Win32.AttachThreadInput(ownThread, targetThread, false);
         if (!foreground)
+        {
             AppLog.Warn($"activate 0x{handle:X} refused: SetForegroundWindow=False attach={attached} lastError={error}");
+        }
+
         return foreground;
     }
 
@@ -1085,9 +1164,14 @@ internal sealed class WindowManager : IDisposable
     private void ActivateWindow(long handle)
     {
         if (!FocusFollowsMouse || _disposed || !IsHoverable(handle))
+        {
             return;
+        }
+
         if (Win32.GetForegroundWindow().ToInt64() == handle)
+        {
             return;
+        }
 
         ActivateForeground(handle);
     }
@@ -1100,22 +1184,32 @@ internal sealed class WindowManager : IDisposable
     private void FollowMouse(long handle)
     {
         if (!FocusFollowsMouse || _disposed)
+        {
             return;
+        }
 
         // No focus stealing in the middle of a mouse drag.
         if ((Win32.GetAsyncKeyState(Win32.VK_LBUTTON) & 0x8000) != 0 ||
             (Win32.GetAsyncKeyState(Win32.VK_RBUTTON) & 0x8000) != 0)
+        {
             return;
+        }
 
         if (!IsHoverable(handle))
+        {
             return;
+        }
 
         var owner = _workspaces.FindOwner(handle);
         if (owner is null)
+        {
             return; // floating window: the activation above is all it needs
+        }
 
         if (_workspaces.GetActiveIndex(owner.OutputName) != owner.Index)
+        {
             return;
+        }
 
         // The Win32 activation already happened in the hook callback, so
         // compare against the model's focus, not the real foreground. The
@@ -1135,7 +1229,9 @@ internal sealed class WindowManager : IDisposable
         foreach (var handle in _managedHandles.ToList())
         {
             if (Win32.IsWindow(new IntPtr(handle)))
+            {
                 continue;
+            }
 
             _workspaces.RemoveWindow(handle);
             _managedHandles.Remove(handle);
@@ -1145,7 +1241,9 @@ internal sealed class WindowManager : IDisposable
         foreach (var handle in _floatedByUser.ToList())
         {
             if (!Win32.IsWindow(new IntPtr(handle)))
+            {
                 _floatedByUser.Remove(handle);
+            }
         }
 
         // A closed scratchpad window's next life is a new window: the
@@ -1153,7 +1251,9 @@ internal sealed class WindowManager : IDisposable
         foreach (var handle in _scratchpadSeen.ToList())
         {
             if (!Win32.IsWindow(new IntPtr(handle)))
+            {
                 _scratchpadSeen.Remove(handle);
+            }
         }
     }
 
@@ -1188,33 +1288,45 @@ internal sealed class WindowManager : IDisposable
         // at all; keeping the last known displays beats acting on an
         // empty list.
         if (current.Count == 0)
+        {
             return;
+        }
 
         foreach (var disconnected in _monitors.Keys.Where(h => !current.Contains(h)).ToList())
+        {
             _monitors.Remove(disconnected);
+        }
 
         var primary = PrimaryMonitor().DeviceName;
 
         foreach (var output in _workspaces.OutputBindings.Values.Distinct().ToList())
         {
             if (devices.Contains(output))
+            {
                 continue;
+            }
 
             var orphanedActive = _workspaces.GetActiveIndex(output);
             foreach (var (index, binding) in _workspaces.OutputBindings)
             {
                 if (string.Equals(binding, output, StringComparison.OrdinalIgnoreCase))
+                {
                     _workspaces.Bind(index, primary);
+                }
             }
 
             _workspaces.ClearActive(output);
             if (orphanedActive is int moved && _workspaces.TryGet(moved)?.OutputName == primary)
+            {
                 _workspaces.SetActiveOn(primary, moved);
+            }
         }
 
         // Every connected display ends up with an active workspace.
         foreach (var device in devices)
+        {
             _workspaces.ActiveOn(device);
+        }
     }
 
     /// <summary>
@@ -1226,7 +1338,9 @@ internal sealed class WindowManager : IDisposable
         foreach (var handle in _managedHandles.ToList())
         {
             if (_workspaces.FindOwner(handle) is not { } workspace)
+            {
                 continue;
+            }
 
             var hwnd = new IntPtr(handle);
 
@@ -1235,11 +1349,15 @@ internal sealed class WindowManager : IDisposable
             // them would steal them into whatever workspace replaced the
             // display they happen to sit on the coordinates of.
             if (!Win32.IsWindowVisible(hwnd))
+            {
                 continue;
+            }
 
             var device = MonitorFor(hwnd).DeviceName;
             if (string.Equals(workspace.OutputName, device, StringComparison.OrdinalIgnoreCase))
+            {
                 continue;
+            }
 
             _workspaces.RemoveWindow(handle);
             _workspaces.AddWindow(handle, device);
@@ -1247,7 +1365,9 @@ internal sealed class WindowManager : IDisposable
 
             // The window joined an active workspace; it must not stay hidden.
             if (!Win32.IsWindowVisible(hwnd))
+            {
                 Win32.ShowWindow(hwnd, Win32.SW_SHOW);
+            }
         }
     }
 
@@ -1269,7 +1389,9 @@ internal sealed class WindowManager : IDisposable
             }
 
             if (NearlyAt(current, placement.Actual))
+            {
                 continue;
+            }
 
             var widthChanged =
                 Math.Abs(current.Right - current.Left - placement.Actual.Width) > PositionTolerance;
@@ -1317,7 +1439,9 @@ internal sealed class WindowManager : IDisposable
             if (_managedHandles.Contains(handle) ||
                 _floatedByUser.Contains(handle) ||
                 !Win32.IsWindow(hwnd))
+            {
                 return true;
+            }
 
             // A for_window move scratchpad rule hides matching windows the
             // moment they appear — once per window, so the scratchpad
@@ -1331,7 +1455,9 @@ internal sealed class WindowManager : IDisposable
             }
 
             if (!IsTileable(hwnd, requireVisible: true))
+            {
                 return true;
+            }
 
             var device = MonitorFor(hwnd).DeviceName;
             if (MoveRuleFor(hwnd) is { } move)
@@ -1392,7 +1518,9 @@ internal sealed class WindowManager : IDisposable
     private void ShowAllWindows(int index)
     {
         if (_workspaces.TryGet(index) is not { } workspace)
+        {
             return;
+        }
 
         foreach (var handle in workspace.WindowHandles)
         {
@@ -1407,7 +1535,9 @@ internal sealed class WindowManager : IDisposable
 
         // A maximized or minimized window ignores SetWindowPos; restore first.
         if (Win32.IsIconic(hwnd) || Win32.IsZoomed(hwnd))
+        {
             Win32.ShowWindow(hwnd, Win32.SW_RESTORE);
+        }
 
         Win32.SetWindowPos(
             hwnd,
@@ -1427,7 +1557,9 @@ internal sealed class WindowManager : IDisposable
         {
             var monitor = Win32.MonitorFromWindow(foreground, Win32.MONITOR_DEFAULTTONEAREST);
             if (_monitors.TryGetValue(monitor, out var info))
+            {
                 return info;
+            }
         }
 
         return PrimaryMonitor();
@@ -1437,7 +1569,9 @@ internal sealed class WindowManager : IDisposable
     {
         var monitor = Win32.MonitorFromWindow(hwnd, Win32.MONITOR_DEFAULTTONEAREST);
         if (_monitors.TryGetValue(monitor, out var info))
+        {
             return info;
+        }
 
         // The window sits on a monitor we have not synced yet (or none at
         // all, transiently, during a display reconfiguration).
@@ -1452,7 +1586,9 @@ internal sealed class WindowManager : IDisposable
     private MonitorInfo PrimaryMonitor()
     {
         if (_monitors.Count == 0)
+        {
             ReconcileMonitors();
+        }
 
         return _monitors.Values.FirstOrDefault(m => m.IsPrimary)
             ?? _monitors.Values.FirstOrDefault()
@@ -1467,7 +1603,9 @@ internal sealed class WindowManager : IDisposable
     private bool IsTileable(IntPtr hwnd, bool requireVisible, bool ignoreFloatingRules = false)
     {
         if (!Win32.IsWindow(hwnd) || (requireVisible && !Win32.IsWindowVisible(hwnd)))
+        {
             return false;
+        }
 
         // Chromium parks the windows of restored sessions minimized far
         // off-screen, yet reports them as visible; they would reserve a tile
@@ -1475,16 +1613,22 @@ internal sealed class WindowManager : IDisposable
         // session: it joins when restoring it fires EVENT_OBJECT_SHOW and
         // triggers the rescan.
         if (Win32.IsIconic(hwnd))
+        {
             return false;
+        }
 
         Win32.GetWindowThreadProcessId(hwnd, out var processId);
         if (processId == _ownProcessId)
+        {
             return false;
+        }
 
         var className = new StringBuilder(256);
         Win32.GetClassName(hwnd, className, className.Capacity);
         if (IgnoredClasses.Contains(className.ToString()))
+        {
             return false;
+        }
 
         var extendedStyle = Win32.GetWindowLongPtr(hwnd, Win32.GWL_EXSTYLE);
 
@@ -1492,24 +1636,32 @@ internal sealed class WindowManager : IDisposable
         // pop-ups) are chrome, not tiled applications.
         if ((extendedStyle & Win32.WS_EX_TOOLWINDOW) != 0 ||
             (extendedStyle & Win32.WS_EX_NOACTIVATE) != 0)
+        {
             return false;
+        }
 
         // Pop-ups without a caption are menus, flyouts and similar
         // transient surfaces; real application windows have a caption.
         var style = Win32.GetWindowLongPtr(hwnd, Win32.GWL_STYLE);
         if ((style & Win32.WS_POPUP) != 0 && (style & Win32.WS_CAPTION) == 0)
+        {
             return false;
+        }
 
         // Owned top-level windows are dialog boxes, message boxes and the
         // like — transient surfaces of another window that ride above
         // their owner, never tiles. This is Win32's counterpart of i3
         // floating the dialog window type automatically.
         if (Win32.GetWindow(hwnd, Win32.GW_OWNER) != IntPtr.Zero)
+        {
             return false;
+        }
 
         var title = new StringBuilder(512);
         if (Win32.GetWindowText(hwnd, title, title.Capacity) == 0)
+        {
             return false;
+        }
 
         // for_window floating rules decide first: matched windows are never
         // managed, like i3's floating enable leaves a window outside the
@@ -1521,15 +1673,21 @@ internal sealed class WindowManager : IDisposable
                  rule.Action == WindowRuleAction.Scratchpad) &&
                 !ignoreFloatingRules &&
                 rule.Matches(className.ToString(), title.ToString()))
+            {
                 return false;
+            }
         }
 
         if (Win32.DwmGetWindowAttribute(hwnd, Win32.DWMWA_CLOAKED, out var cloaked, sizeof(int)) == 0 &&
             cloaked != 0)
+        {
             return false;
+        }
 
         if (!Win32.GetWindowRect(hwnd, out var rect) || rect.Right <= rect.Left || rect.Bottom <= rect.Top)
+        {
             return false;
+        }
 
         return true;
     }

@@ -15,7 +15,10 @@ public sealed class ExecStatement : CommandStatement
             // A binding's bare exec warns as the unsupported command it
             // is; the top level and the bar keep their own wording.
             if (!context.CollectingIntent)
+            {
                 context.Warn($"exec without a program: {context.Line}");
+            }
+
             return;
         }
 

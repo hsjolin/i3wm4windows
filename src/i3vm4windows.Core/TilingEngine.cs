@@ -28,7 +28,9 @@ public sealed class TilingEngine
     public void AddWindow(Workspace workspace, long windowHandle)
     {
         if (Find(workspace.Root, windowHandle) is not null)
+        {
             return;
+        }
 
         var node = new WindowNode(windowHandle);
         var focused = Find(workspace.Root, workspace.FocusedWindowHandle ?? -1);
@@ -52,7 +54,9 @@ public sealed class TilingEngine
     public bool RemoveWindow(Workspace workspace, long windowHandle)
     {
         if (Find(workspace.Root, windowHandle) is not { } node || node.Parent is not { } parent)
+        {
             return false;
+        }
 
         parent.Children.Remove(node);
 
@@ -65,7 +69,9 @@ public sealed class TilingEngine
         }
 
         if (workspace.FocusedWindowHandle == windowHandle)
+        {
             workspace.FocusedWindowHandle = workspace.NextFocusAfter(windowHandle);
+        }
 
         return true;
     }
@@ -126,7 +132,9 @@ public sealed class TilingEngine
         if (workspace.FocusedWindowHandle is not { } handle ||
             Find(workspace.Root, handle)?.Parent is not { } parent ||
             parent.Mode != LayoutMode.Tabbed)
+        {
             return Array.Empty<long>();
+        }
 
         return parent.Windows().Select(w => w.WindowHandle).ToList();
     }
@@ -139,7 +147,9 @@ public sealed class TilingEngine
     {
         var handles = workspace.WindowHandles.ToList();
         if (handles.Count == 0)
+        {
             return false;
+        }
 
         var current = workspace.FocusedWindowHandle is { } focused ? handles.IndexOf(focused) : -1;
         if (current < 0)
@@ -161,12 +171,16 @@ public sealed class TilingEngine
     {
         if (Find(workspace.Root, workspace.FocusedWindowHandle ?? -1) is not { } focused ||
             focused.Parent is not { } parent)
+        {
             return false;
+        }
 
         var index = parent.Children.IndexOf(focused);
         var target = index + offset;
         if (target < 0 || target >= parent.Children.Count)
+        {
             return false;
+        }
 
         parent.Children.RemoveAt(index);
         parent.Children.Insert(target, focused);
@@ -202,16 +216,22 @@ public sealed class TilingEngine
     public bool ApplyUserResize(Workspace workspace, long windowHandle, ResizeAxis axis, int requestedSize)
     {
         if (Find(workspace.Root, windowHandle) is not { } node || node.Parent is not { } parent)
+        {
             return false;
+        }
 
         var horizontal = parent.Orientation == SplitOrientation.Horizontal;
         if ((axis == ResizeAxis.Width) != horizontal || parent.Children.Count < 2)
+        {
             return false;
+        }
 
         var span = parent.LastUsableSpan;
         var max = span - MinWindowExtent * (parent.Children.Count - 1);
         if (span <= 0 || requestedSize < MinWindowExtent || requestedSize > max)
+        {
             return false;
+        }
 
         // Weights are in pixel units: the resized window takes the requested
         // extent, the siblings absorb the rest proportionally.
@@ -221,7 +241,9 @@ public sealed class TilingEngine
         var siblings = parent.Children.Where(child => !ReferenceEquals(child, node)).ToList();
         var oldTotal = siblings.Sum(child => Math.Max(child.Weight, MinWeight));
         foreach (var sibling in siblings)
+        {
             sibling.Weight = Math.Max(sibling.Weight, MinWeight) * siblingSpan / oldTotal;
+        }
 
         return true;
     }
@@ -230,7 +252,9 @@ public sealed class TilingEngine
         SplitNode node, Rect rect, LayoutOptions options, List<AssignedRect> result, long? focused)
     {
         if (node.Children.Count == 0)
+        {
             return;
+        }
 
         if (node.Mode == LayoutMode.Tabbed)
         {

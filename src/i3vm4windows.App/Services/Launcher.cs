@@ -15,7 +15,9 @@ internal static class Launcher
     public static void Start(string? command)
     {
         if (command is null)
+        {
             return;
+        }
 
         command = Environment.ExpandEnvironmentVariables(command);
         if (command.StartsWith('~') &&

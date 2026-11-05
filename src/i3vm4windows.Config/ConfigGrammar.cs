@@ -17,7 +17,10 @@ internal static class ConfigGrammar
     {
         var rest = new string[parameters.Count - from];
         for (var i = 0; i < rest.Length; i++)
+        {
             rest[i] = parameters[from + i];
+        }
+
         return rest;
     }
 
@@ -25,7 +28,9 @@ internal static class ConfigGrammar
     {
         index = 0;
         if (int.TryParse(name, out index))
+        {
             return true;
+        }
 
         var match = NumberedWorkspace.Match(name);
         return match.Success && int.TryParse(match.Groups[1].Value, out index);
@@ -62,12 +67,18 @@ internal static class ConfigGrammar
         {
             var regex = TryCreateRegex(match.Groups[2].Value, context);
             if (regex is null)
+            {
                 continue;
+            }
 
             if (match.Groups[1].Value.Equals("class", StringComparison.OrdinalIgnoreCase))
+            {
                 classRegex = regex;
+            }
             else
+            {
                 titleRegex = regex;
+            }
         }
 
         if (classRegex is null && titleRegex is null)

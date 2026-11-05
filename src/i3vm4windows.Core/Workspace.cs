@@ -35,7 +35,9 @@ public sealed class Workspace
                 _focusHistory.Remove(handle);
                 _focusHistory.Add(handle);
                 if (_focusHistory.Count > 32)
+                {
                     _focusHistory.RemoveAt(0);
+                }
             }
         }
     }
@@ -52,7 +54,9 @@ public sealed class Workspace
         {
             var candidate = _focusHistory[i];
             if (candidate != removed && handles.Contains(candidate))
+            {
                 return candidate;
+            }
         }
 
         return handles.Count > 0 ? handles[0] : null;

@@ -79,7 +79,9 @@ internal sealed class WinDragger : IDisposable
     public void Start()
     {
         if (_thread is not null)
+        {
             return;
+        }
 
         _thread = new Thread(RunHook)
         {
@@ -122,7 +124,9 @@ internal sealed class WinDragger : IDisposable
             // Replayed clicks — ours or other programs' — pass through,
             // or the replayed click would loop straight back to us.
             if ((data.flags & Win32.LLKHF_INJECTED) != 0)
+            {
                 return Win32.CallNextHookEx(_hook, nCode, wParam, lParam);
+            }
 
             if (_winKeyDown())
             {
@@ -132,7 +136,9 @@ internal sealed class WinDragger : IDisposable
                     case Win32.WM_RBUTTONDOWN:
                         var target = DragTarget(data.pt.X, data.pt.Y);
                         if (target == IntPtr.Zero)
+                        {
                             break;
+                        }
 
                         _window = target;
                         _resizing = message == Win32.WM_RBUTTONDOWN;
@@ -145,7 +151,9 @@ internal sealed class WinDragger : IDisposable
 
                     case Win32.WM_MOUSEMOVE:
                         if (_window == IntPtr.Zero)
+                        {
                             break;
+                        }
 
                         // Moves pass through: consuming them freezes the
                         // pointer on screen, and the window under it sees
@@ -158,7 +166,9 @@ internal sealed class WinDragger : IDisposable
                     case Win32.WM_LBUTTONUP:
                     case Win32.WM_RBUTTONUP:
                         if (_window == IntPtr.Zero)
+                        {
                             break;
+                        }
 
                         _window = IntPtr.Zero;
                         _dispatcher.BeginInvoke(() =>
@@ -188,18 +198,27 @@ internal sealed class WinDragger : IDisposable
     {
         var target = Win32.WindowFromPoint(new Win32.POINT { X = x, Y = y });
         if (target != IntPtr.Zero)
+        {
             target = Win32.GetAncestor(target, Win32.GA_ROOT);
+        }
+
         if (target == IntPtr.Zero)
+        {
             return IntPtr.Zero;
+        }
 
         Win32.GetWindowThreadProcessId(target, out var processId);
         if (processId == _ownProcessId)
+        {
             return IntPtr.Zero;
+        }
 
         var className = new StringBuilder(256);
         Win32.GetClassName(target, className, className.Capacity);
         if (IgnoredClasses.Contains(className.ToString()))
+        {
             return IntPtr.Zero;
+        }
 
         return target;
     }
@@ -207,7 +226,9 @@ internal sealed class WinDragger : IDisposable
     private void QueueMove()
     {
         if (_moveQueued)
+        {
             return;
+        }
 
         _moveQueued = true;
         _dispatcher.BeginInvoke(() =>
@@ -223,9 +244,14 @@ internal sealed class WinDragger : IDisposable
     private void BeginDrag(IntPtr target)
     {
         if (Win32.IsZoomed(target))
+        {
             Win32.ShowWindow(target, Win32.SW_RESTORE);
+        }
+
         if (!Win32.GetWindowRect(target, out _start))
+        {
             return;
+        }
 
         // Resizing follows the corner nearest the click.
         _leftEdge = _originX - _start.Left < _start.Right - _originX;
@@ -245,7 +271,9 @@ internal sealed class WinDragger : IDisposable
         var dx = x - _originX;
         var dy = y - _originY;
         if (!_moved && Math.Abs(dx) + Math.Abs(dy) <= ClickSlop)
+        {
             return;
+        }
 
         _moved = true;
         var left = _start.Left;
@@ -255,13 +283,22 @@ internal sealed class WinDragger : IDisposable
         if (_resizing)
         {
             if (_leftEdge)
+            {
                 left = Math.Min(_start.Left + dx, right - MinExtent);
+            }
             else
+            {
                 right = Math.Max(_start.Right + dx, left + MinExtent);
+            }
+
             if (_topEdge)
+            {
                 top = Math.Min(_start.Top + dy, bottom - MinExtent);
+            }
             else
+            {
                 bottom = Math.Max(_start.Bottom + dy, top + MinExtent);
+            }
         }
         else
         {
@@ -308,11 +345,16 @@ internal sealed class WinDragger : IDisposable
     public void Dispose()
     {
         if (_disposed)
+        {
             return;
+        }
 
         _disposed = true;
         if (_hookThreadId != 0)
+        {
             Win32.PostThreadMessage(_hookThreadId, Win32.WM_QUIT, IntPtr.Zero, IntPtr.Zero);
+        }
+
         _thread?.Join(TimeSpan.FromSeconds(2));
     }
 }

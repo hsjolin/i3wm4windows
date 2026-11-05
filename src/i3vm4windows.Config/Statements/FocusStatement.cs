@@ -8,7 +8,9 @@ public sealed class FocusStatement : CommandStatement
     public override void Execute(ConfigContext context, IReadOnlyList<string> parameters)
     {
         if (parameters.Count != 1)
+        {
             return;
+        }
 
         context.Intent = parameters[0].ToLowerInvariant() switch
         {

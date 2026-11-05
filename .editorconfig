@@ -1,0 +1,6 @@
+root = true
+
+[*.cs]
+# Every control statement gets braces, even for a one-line body.
+dotnet_diagnostic.IDE0011.severity = warning
+csharp_prefer_braces = true:warning

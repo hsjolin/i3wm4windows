@@ -18,7 +18,10 @@ public sealed class SetStatement : TopLevelStatement
 
         var value = string.Join(' ', ConfigGrammar.Rest(parameters, 1));
         if (value.Length >= 2 && value.StartsWith('"') && value.EndsWith('"'))
+        {
             value = value[1..^1];
+        }
+
         context.Variables[parameters[0]] = value;
     }
 }

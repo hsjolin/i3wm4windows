@@ -12,7 +12,10 @@ public sealed class TilingEngineTests
         var workspace = new Workspace(1, "test", LayoutMode.Split);
         var engine = new TilingEngine();
         foreach (var handle in handles)
+        {
             engine.AddWindow(workspace, handle);
+        }
+
         return (workspace, engine);
     }
 

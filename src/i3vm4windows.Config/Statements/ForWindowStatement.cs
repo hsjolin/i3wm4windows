@@ -22,7 +22,9 @@ public sealed class ForWindowStatement : TopLevelStatement
         }
 
         if (!ConfigGrammar.TryParseCriteria(parameters, ref index, out var rule, context))
+        {
             return;
+        }
 
         if (index + 1 >= parameters.Count)
         {

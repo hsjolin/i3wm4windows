@@ -52,7 +52,9 @@ internal sealed class HotkeyHost : IDisposable
     public void Start(Action<int> onHotkey)
     {
         if (_source is not null)
+        {
             throw new InvalidOperationException("Hotkey host already started.");
+        }
 
         var parameters = new HwndSourceParameters("i3vm4windowsHotkeyHost", 0, 0)
         {
@@ -83,15 +85,21 @@ internal sealed class HotkeyHost : IDisposable
     public bool Register(int id, Win32.Modifiers modifiers, Key key)
     {
         if (_source is null)
+        {
             throw new InvalidOperationException("Hotkey host has not been started.");
+        }
 
         var virtualKey = (uint)KeyInterop.VirtualKeyFromKey(key);
         lock (_lock)
         {
             if (Win32.RegisterHotKey(_source.Handle, id, (uint)modifiers, virtualKey))
+            {
                 _registrations.Add((id, modifiers, virtualKey));
+            }
             else
+            {
                 _hooked.Add((id, modifiers, virtualKey));
+            }
         }
 
         return true;
@@ -108,7 +116,9 @@ internal sealed class HotkeyHost : IDisposable
         {
             _modeBindings.Clear();
             foreach (var (id, modifiers, key) in bindings)
+            {
                 _modeBindings.Add((id, modifiers, (uint)KeyInterop.VirtualKeyFromKey(key)));
+            }
         }
     }
 
@@ -126,7 +136,9 @@ internal sealed class HotkeyHost : IDisposable
     private void EnsureHook()
     {
         if (_hookThread?.IsAlive == true)
+        {
             return;
+        }
 
         _hookThread = new Thread(RunHook)
         {
@@ -231,7 +243,9 @@ internal sealed class HotkeyHost : IDisposable
                 }
 
                 if (_winKeyDown)
+                {
                     return new IntPtr(1);
+                }
 
                 return Win32.CallNextHookEx(_llHook, nCode, wParam, lParam);
             }
@@ -242,7 +256,9 @@ internal sealed class HotkeyHost : IDisposable
                 // known combinations dispatch their action, anything else is
                 // consumed so no shell shortcut leaks through.
                 if (keyDown && MatchAny(data.vkCode) is { } id)
+                {
                     _dispatcher?.BeginInvoke(() => _onHotkey?.Invoke(id));
+                }
 
                 return new IntPtr(1);
             }
@@ -254,7 +270,9 @@ internal sealed class HotkeyHost : IDisposable
     private bool ModeActive()
     {
         lock (_lock)
+        {
             return _modeBindings.Count > 0;
+        }
     }
 
     /// <summary>
@@ -269,7 +287,9 @@ internal sealed class HotkeyHost : IDisposable
             foreach (var (id, modifiers, vk) in _modeBindings)
             {
                 if (vk == virtualKey && held == modifiers)
+                {
                     return id;
+                }
             }
         }
 
@@ -286,7 +306,9 @@ internal sealed class HotkeyHost : IDisposable
             foreach (var (id, modifiers, vk) in _registrations.Concat(_hooked))
             {
                 if (vk == virtualKey && held == modifiers)
+                {
                     return id;
+                }
             }
         }
 
@@ -343,13 +365,25 @@ internal sealed class HotkeyHost : IDisposable
     {
         var modifiers = Win32.Modifiers.None;
         if (_winKeyDown)
+        {
             modifiers |= Win32.Modifiers.Win;
+        }
+
         if (_shiftKeyDown)
+        {
             modifiers |= Win32.Modifiers.Shift;
+        }
+
         if (_controlKeyDown)
+        {
             modifiers |= Win32.Modifiers.Control;
+        }
+
         if (_altKeyDown)
+        {
             modifiers |= Win32.Modifiers.Alt;
+        }
+
         return modifiers;
     }
 
@@ -361,12 +395,17 @@ internal sealed class HotkeyHost : IDisposable
     public void UnregisterAll()
     {
         if (_source is null)
+        {
             return;
+        }
 
         lock (_lock)
         {
             foreach (var (id, _, _) in _registrations)
+            {
                 Win32.UnregisterHotKey(_source.Handle, id);
+            }
+
             _registrations.Clear();
             _hooked.Clear();
         }
@@ -375,7 +414,9 @@ internal sealed class HotkeyHost : IDisposable
     public void Dispose()
     {
         if (_source is null)
+        {
             return;
+        }
 
         UnregisterAll();
 
@@ -389,14 +430,20 @@ internal sealed class HotkeyHost : IDisposable
     {
         var thread = _hookThread;
         if (thread is null)
+        {
             return;
+        }
 
         // The thread id is published right before the hook is installed.
         for (var attempt = 0; attempt < 20 && _hookThreadId == 0; attempt++)
+        {
             Thread.Sleep(50);
+        }
 
         if (_hookThreadId != 0)
+        {
             Win32.PostThreadMessage(_hookThreadId, Win32.WM_QUIT, IntPtr.Zero, IntPtr.Zero);
+        }
 
         thread.Join(TimeSpan.FromSeconds(2));
         _hookThread = null;

@@ -51,7 +51,9 @@ public sealed class ConfigContext
     public ConfigContext(IEnumerable<IConfigStatement> statements)
     {
         foreach (var statement in statements)
+        {
             _statements[statement.Name] = statement;
+        }
     }
 
     /// <summary>The statement with the given name, or null when the

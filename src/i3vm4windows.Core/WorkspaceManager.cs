@@ -87,7 +87,9 @@ public sealed class WorkspaceManager
         if (_activeByOutput.TryGetValue(outputName, out var index) &&
             _workspaces.TryGetValue(index, out var remembered) &&
             remembered.OutputName == outputName)
+        {
             return remembered;
+        }
 
         var bound = _workspaces.Values
             .Where(w => w.OutputName == outputName)
@@ -136,7 +138,9 @@ public sealed class WorkspaceManager
         var output = ActiveOn(focusedOutput).OutputName;
         var current = ActiveOn(output).Index;
         if (_previousByOutput.TryGetValue(output, out var previous) && previous != current)
+        {
             return SwitchTo(previous, focusedOutput);
+        }
 
         return new SwitchResult(new[] { new OutputSwitch(output, current, current) });
     }
@@ -150,7 +154,9 @@ public sealed class WorkspaceManager
     public WorkspaceMoveResult? MoveActiveWorkspaceToOutput(string sourceOutput, string targetOutput)
     {
         if (string.Equals(sourceOutput, targetOutput, StringComparison.OrdinalIgnoreCase))
+        {
             return null;
+        }
 
         var moved = ActiveOn(sourceOutput);
         moved.OutputName = targetOutput;
@@ -161,7 +167,9 @@ public sealed class WorkspaceManager
             .OrderBy(w => w.Index)
             .FirstOrDefault();
         if (replacement is null)
+        {
             replacement = GetOrCreate(NextFreeIndex(), sourceOutput);
+        }
 
         _activeByOutput[sourceOutput] = replacement.Index;
         return new WorkspaceMoveResult(moved.Index, sourceOutput, replacement.Index, targetOutput);
@@ -178,11 +186,15 @@ public sealed class WorkspaceManager
 
         var source = ActiveOn(fromOutput);
         if (source.FocusedWindowHandle is not { } handle)
+        {
             return null;
+        }
 
         var target = GetOrCreate(index, source.OutputName);
         if (target == source || !_engine.RemoveWindow(source, handle))
+        {
             return null;
+        }
 
         _engine.AddWindow(target, handle);
         return new WindowMoveResult(handle, target);
@@ -213,7 +225,9 @@ public sealed class WorkspaceManager
         foreach (var workspace in _workspaces.Values)
         {
             if (_engine.RemoveWindow(workspace, windowHandle))
+            {
                 return true;
+            }
         }
 
         return false;
@@ -227,7 +241,9 @@ public sealed class WorkspaceManager
     {
         var owner = FindOwner(windowHandle);
         if (owner is null)
+        {
             return false;
+        }
 
         owner.FocusedWindowHandle = windowHandle;
         return true;
@@ -283,7 +299,10 @@ public sealed class WorkspaceManager
     {
         var index = 1;
         while (_workspaces.ContainsKey(index))
+        {
             index++;
+        }
+
         return index;
     }
 }

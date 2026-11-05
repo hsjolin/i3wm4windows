@@ -54,7 +54,9 @@ internal static class AppIcon
         }
 
         foreach (var (_, png) in frames)
+        {
             writer.Write(png);
+        }
     }
 
     private static byte[] EncodePng(Image image)

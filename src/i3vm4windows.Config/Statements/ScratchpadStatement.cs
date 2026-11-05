@@ -16,7 +16,9 @@ public sealed class ScratchpadStatement : CommandStatement
                 Run: (runtime, rule) =>
                 {
                     if (rule is not null)
+                    {
                         runtime.ToggleScratchpad(rule);
+                    }
                 });
         }
     }

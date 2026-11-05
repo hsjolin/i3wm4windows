@@ -8,8 +8,10 @@ public sealed class KillStatement : CommandStatement
     public override void Execute(ConfigContext context, IReadOnlyList<string> parameters)
     {
         if (parameters.Count == 0)
+        {
             context.Intent = new CommandIntent(
                 Action: ConfigAction.CloseFocused,
                 Run: (runtime, _) => runtime.CloseFocused());
+        }
     }
 }

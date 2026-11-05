@@ -37,11 +37,15 @@ public static class I3ConfigParser
         {
             var line = StripComment(original).Trim();
             if (line.Length == 0)
+            {
                 continue;
+            }
 
             var tokens = Tokenize(line);
             if (tokens.Length == 0)
+            {
                 continue;
+            }
 
             // set stores its value verbatim, so its statement runs on the
             // unsubstituted line: substituting would rewrite a variable's
@@ -53,7 +57,9 @@ public static class I3ConfigParser
                 line = SubstituteVariables(line, context.Variables);
                 tokens = Tokenize(line);
                 if (tokens.Length == 0)
+                {
                     continue;
+                }
             }
 
             context.Line = line;
@@ -84,7 +90,9 @@ public static class I3ConfigParser
     {
         // Longest names first so $ws10 is not replaced inside $ws1.
         foreach (var (name, value) in variables.OrderByDescending(v => v.Key.Length))
+        {
             line = line.Replace(name, value, StringComparison.OrdinalIgnoreCase);
+        }
 
         return line;
     }
@@ -106,7 +114,9 @@ public static class I3ConfigParser
         }
 
         if (pending.Length > 0)
+        {
             yield return pending;
+        }
     }
 
     /// <summary>
@@ -120,23 +130,35 @@ public static class I3ConfigParser
         while (index < line.Length)
         {
             while (index < line.Length && char.IsWhiteSpace(line[index]))
+            {
                 index++;
+            }
+
             if (index >= line.Length)
+            {
                 break;
+            }
 
             var start = index;
             if (line[index] == '"')
             {
                 index++;
                 while (index < line.Length && line[index] != '"')
+                {
                     index++;
+                }
+
                 if (index < line.Length)
+                {
                     index++;
+                }
             }
             else
             {
                 while (index < line.Length && !char.IsWhiteSpace(line[index]))
+                {
                     index++;
+                }
             }
 
             tokens.Add(line[start..index]);

@@ -79,7 +79,9 @@ internal sealed class WorkspaceBar : IDisposable
         IReadOnlyList<BarTab> tabs)
     {
         if (_disposed)
+        {
             return;
+        }
 
         var bar = EnsureBar(output);
         BuildChips(bar.Chips, workspaces, activeIndex);
@@ -101,12 +103,16 @@ internal sealed class WorkspaceBar : IDisposable
     public void Dispose()
     {
         if (_disposed)
+        {
             return;
+        }
 
         _disposed = true;
         _statusTimer?.Stop();
         foreach (var bar in _bars.Values)
+        {
             bar.Dispose();
+        }
 
         _bars.Clear();
     }
@@ -119,20 +125,34 @@ internal sealed class WorkspaceBar : IDisposable
     private async void UpdateStatus()
     {
         if (_statusRunning)
+        {
             return;
+        }
 
         _statusRunning = true;
         try
         {
             var parts = new List<string>();
             if (_config.Clock)
+            {
                 parts.Add(DateTime.Now.ToString("HH:mm"));
+            }
+
             if (_config.Date)
+            {
                 parts.Add(DateTime.Now.ToString("yyyy-MM-dd"));
+            }
+
             if (_config.Cpu && CpuPercent() is { } cpu)
+            {
                 parts.Add($"{cpu:F0}% CPU");
+            }
+
             if (_config.Memory && MemoryPercent() is { } memory)
+            {
                 parts.Add($"RAM {memory}%");
+            }
+
             if (_config.Commands.Count > 0)
             {
                 var outputs = await Task.WhenAll(_config.Commands.Select(RunCommand));
@@ -140,7 +160,9 @@ internal sealed class WorkspaceBar : IDisposable
             }
 
             foreach (var bar in _bars.Values)
+            {
                 BuildStatus(bar.Status, parts);
+            }
         }
         finally
         {
@@ -156,7 +178,9 @@ internal sealed class WorkspaceBar : IDisposable
     private int? CpuPercent()
     {
         if (!Win32.GetSystemTimes(out var idle, out var kernel, out var user))
+        {
             return null;
+        }
 
         var idleTicks = ((ulong)idle.dwHighDateTime << 32) | idle.dwLowDateTime;
         var kernelTicks = ((ulong)kernel.dwHighDateTime << 32) | kernel.dwLowDateTime;
@@ -165,7 +189,9 @@ internal sealed class WorkspaceBar : IDisposable
         var previous = _lastCpu;
         _lastCpu = (idleTicks, total);
         if (previous is not { } before || total <= before.Total)
+        {
             return null;
+        }
 
         var busy = (total - before.Total) - (idleTicks - before.Idle);
         return Math.Clamp((int)(100 * busy / (total - before.Total)), 0, 100);
@@ -199,7 +225,9 @@ internal sealed class WorkspaceBar : IDisposable
             };
             using var process = Process.Start(info);
             if (process is null)
+            {
                 return "";
+            }
 
             return (await process.StandardOutput.ReadLineAsync() ?? "").Trim();
         }
@@ -213,7 +241,9 @@ internal sealed class WorkspaceBar : IDisposable
     private Bar EnsureBar(string output)
     {
         if (_bars.TryGetValue(output, out var bar))
+        {
             return bar;
+        }
 
         var chips = new StackPanel
         {

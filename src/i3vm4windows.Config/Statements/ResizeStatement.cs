@@ -14,7 +14,9 @@ public sealed class ResizeStatement : CommandStatement
     public override void Execute(ConfigContext context, IReadOnlyList<string> parameters)
     {
         if (parameters.Count < 3 || !int.TryParse(parameters[2], out var amount))
+        {
             return;
+        }
 
         var grow = parameters[0].Equals("grow", StringComparison.OrdinalIgnoreCase);
         var width = parameters[1].Equals("width", StringComparison.OrdinalIgnoreCase);

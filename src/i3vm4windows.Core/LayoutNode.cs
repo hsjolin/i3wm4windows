@@ -80,7 +80,10 @@ public sealed class SplitNode : LayoutNode
                     break;
                 case SplitNode split:
                     foreach (var inner in split.Windows())
+                    {
                         yield return inner;
+                    }
+
                     break;
             }
         }

@@ -36,7 +36,9 @@ public sealed class BindsymStatement : TopLevelStatement
         if (original.Length > 0 && original[0].StartsWith('['))
         {
             if (!ConfigGrammar.TryParseCriteria(original, ref index, out rule, context))
+            {
                 return;
+            }
 
             // The criteria ended on the token at index; the command follows.
             index++;
