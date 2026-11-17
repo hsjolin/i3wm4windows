@@ -435,8 +435,9 @@ internal sealed class WindowManager : IDisposable
 
             // Always on top, so a floating window does not sink behind the
             // tiling when it loses the focus.
-            var style = Win32.GetWindowLongPtr(foreground, Win32.GWL_EXSTYLE);
-            Win32.SetWindowLongPtr(foreground, Win32.GWL_EXSTYLE, (nint)(style | Win32.WS_EX_TOPMOST));
+            Win32.SetWindowPos(
+                foreground, Win32.HWND_TOPMOST, 0, 0, 0, 0,
+                Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
 
             UnmanageWindow(handle);
             _floatedByUser.Add(handle);
@@ -452,8 +453,9 @@ internal sealed class WindowManager : IDisposable
         }
 
         // Back into the tiling: no longer always on top.
-        var restored = Win32.GetWindowLongPtr(foreground, Win32.GWL_EXSTYLE);
-        Win32.SetWindowLongPtr(foreground, Win32.GWL_EXSTYLE, (nint)(restored & ~Win32.WS_EX_TOPMOST));
+        Win32.SetWindowPos(
+            foreground, Win32.HWND_NOTOPMOST, 0, 0, 0, 0,
+            Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
 
         _floatedByUser.Remove(handle);
         _workspaces.AddWindow(handle, ActiveMonitor().DeviceName);
@@ -1255,7 +1257,9 @@ internal sealed class WindowManager : IDisposable
             var style = Win32.GetWindowLongPtr(hwnd, Win32.GWL_EXSTYLE);
             if ((style & Win32.WS_EX_TOPMOST) == 0)
             {
-                Win32.SetWindowLongPtr(hwnd, Win32.GWL_EXSTYLE, (nint)(style | Win32.WS_EX_TOPMOST));
+                Win32.SetWindowPos(
+                    hwnd, Win32.HWND_TOPMOST, 0, 0, 0, 0,
+                    Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
             }
         }
     }
@@ -1714,11 +1718,9 @@ internal sealed class WindowManager : IDisposable
                 // stay above it, so it never sinks behind when unfocused.
                 if (rule.Action == WindowRuleAction.Floating && Win32.IsWindowVisible(hwnd))
                 {
-                    var ex = Win32.GetWindowLongPtr(hwnd, Win32.GWL_EXSTYLE);
-                    if ((ex & Win32.WS_EX_TOPMOST) == 0)
-                    {
-                        Win32.SetWindowLongPtr(hwnd, Win32.GWL_EXSTYLE, (nint)(ex | Win32.WS_EX_TOPMOST));
-                    }
+                    Win32.SetWindowPos(
+                        hwnd, Win32.HWND_TOPMOST, 0, 0, 0, 0,
+                        Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
                 }
 
                 return false;

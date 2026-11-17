@@ -305,6 +305,7 @@ internal static class Win32
     /// <summary>Pins a window above every non-topmost window, like i3
     /// floating windows sit above the tiled layer.</summary>
     public static readonly IntPtr HWND_TOPMOST = new(-1);
+    public static readonly IntPtr HWND_NOTOPMOST = new(-2);
 
     public const int SW_HIDE = 0;
     public const int SW_SHOW = 5;
