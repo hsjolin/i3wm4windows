@@ -259,9 +259,6 @@ internal static class Win32
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
     public static extern nint SetWindowLongPtr(IntPtr hwnd, int index, nint value);
 
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
-    public static extern nint GetWindowLongPtr(IntPtr hwnd, int index);
-
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
 

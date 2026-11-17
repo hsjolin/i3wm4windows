@@ -435,7 +435,7 @@ internal sealed class WindowManager : IDisposable
             // Always on top, so a floating window does not sink behind the
             // tiling when it loses the focus.
             var style = Win32.GetWindowLongPtr(foreground, Win32.GWL_EXSTYLE);
-            Win32.SetWindowLongPtr(foreground, Win32.GWL_EXSTYLE, style | Win32.WS_EX_TOPMOST);
+            Win32.SetWindowLongPtr(foreground, Win32.GWL_EXSTYLE, (nint)(style | Win32.WS_EX_TOPMOST));
 
             UnmanageWindow(handle);
             _floatedByUser.Add(handle);
@@ -452,7 +452,7 @@ internal sealed class WindowManager : IDisposable
 
         // Back into the tiling: no longer always on top.
         var restored = Win32.GetWindowLongPtr(foreground, Win32.GWL_EXSTYLE);
-        Win32.SetWindowLongPtr(foreground, Win32.GWL_EXSTYLE, restored & ~Win32.WS_EX_TOPMOST);
+        Win32.SetWindowLongPtr(foreground, Win32.GWL_EXSTYLE, (nint)(restored & ~Win32.WS_EX_TOPMOST));
 
         _floatedByUser.Remove(handle);
         _workspaces.AddWindow(handle, ActiveMonitor().DeviceName);
