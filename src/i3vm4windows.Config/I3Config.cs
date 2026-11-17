@@ -90,7 +90,13 @@ public sealed record I3Config(
     int MinWindowWidth = 400,
     LayoutMode DefaultWorkspaceLayout = LayoutMode.Split,
     bool FocusFollowsMouse = false,
-    BarConfig? Bar = null);
+    BarConfig? Bar = null,
+    IReadOnlyList<string>? ExecAlways = null)
+{
+    /// <summary>The exec_always commands: they run on a real start and on
+    /// every reload; plain exec only on a real start.</summary>
+    public IReadOnlyList<string> AutostartsAlways => ExecAlways ?? Array.Empty<string>();
+}
 
 /// <summary>What a for_window rule does with the windows it matches.</summary>
 public enum WindowRuleAction

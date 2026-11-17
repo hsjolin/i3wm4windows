@@ -9,4 +9,7 @@ namespace i3vm4windows.Config.Statements;
 public sealed class ExecAlwaysStatement : ExecStatement
 {
     public override string Name => "exec_always";
+
+    protected override void AddAutostart(ConfigContext context, string command) =>
+        context.AutostartsAlways.Add(command);
 }

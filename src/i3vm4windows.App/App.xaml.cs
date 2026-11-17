@@ -18,6 +18,7 @@ public partial class App : System.Windows.Application
     /// name; the hook activates them while the mode is active.</summary>
     private readonly Dictionary<string, List<(int Id, Binding Binding)>> _modes = new();
     private string _configPath = "";
+    private string _startupArgs = "";
     private WindowManager? _windowManager;
     private HotkeyHost? _hotkeyHost;
     private WinDragger? _dragger;
@@ -33,6 +34,7 @@ public partial class App : System.Windows.Application
             ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 ".config", "i3", "config");
+        _startupArgs = string.Join(" ", e.Args.Where(a => !a.StartsWith('-')));
         AppLog.Info($"configuration: {_configPath}");
 
         var config = LoadConfig(_configPath);
@@ -66,9 +68,20 @@ public partial class App : System.Windows.Application
             Dispatcher);
         _dragger.Start();
 
-        // i3's autostart: exec directives run when the app starts with
-        // this configuration; a reload does not run them again.
-        foreach (var command in config.Exec)
+        // i3's autostart: on a real start, exec and exec_always run; a
+        // reload restarts with --ignore-exec, so only exec_always runs.
+        var ignoreExec = e.Args.Contains("--ignore-exec", StringComparer.OrdinalIgnoreCase);
+        AppLog.Info($"startup: exec {(ignoreExec ? "skipped (--ignore-exec)" : "runs")}, " +
+            $"exec_always always runs");
+        if (!ignoreExec)
+        {
+            foreach (var command in config.Exec)
+            {
+                Launcher.Start(command);
+            }
+        }
+
+        foreach (var command in config.AutostartsAlways)
         {
             Launcher.Start(command);
         }
@@ -126,13 +139,18 @@ public partial class App : System.Windows.Application
     /// </summary>
     private void RestartApplication()
     {
-        AppLog.Info("restarting on request");
+        AppLog.Info("restarting on request (config reload, --ignore-exec)");
 
         if (Environment.ProcessPath is { } exe)
         {
             try
             {
-                Process.Start(new ProcessStartInfo { FileName = exe, UseShellExecute = true });
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = exe,
+                    Arguments = $"--ignore-exec {_startupArgs}".Trim(),
+                    UseShellExecute = true,
+                });
             }
             catch (Exception error)
             {
@@ -240,7 +258,7 @@ public partial class App : System.Windows.Application
     private System.Windows.Forms.NotifyIcon CreateTrayIcon()
     {
         var menu = new System.Windows.Forms.ContextMenuStrip();
-        menu.Items.Add("Reload i3vm4windows", null, (_, _) => RestartApplication());
+        menu.Items.Add("Reload configuration (no exec)", null, (_, _) => RestartApplication());
         menu.Items.Add("Open log", null, (_, _) => Process.Start(new ProcessStartInfo
         {
             FileName = AppLog.Path,

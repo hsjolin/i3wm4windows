@@ -40,8 +40,13 @@ public class ExecStatement : CommandStatement
             return;
         }
 
-        context.Autostarts.Add(string.Join(' ', rest));
+        AddAutostart(context, string.Join(' ', rest));
     }
+
+    /// <summary>Where a top-level command lands: exec autostarts only on a
+    /// real start, exec_always also on a reload.</summary>
+    protected virtual void AddAutostart(ConfigContext context, string command) =>
+        context.Autostarts.Add(command);
 
     /// <summary>Drops the --no-startup-id marker of i3.</summary>
     private static string[] StripMarker(IReadOnlyList<string> parameters)

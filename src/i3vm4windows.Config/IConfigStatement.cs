@@ -74,6 +74,10 @@ public sealed class ConfigContext
 
     public List<string> Autostarts { get; } = new();
 
+    /// <summary>The exec_always commands: like autostarts, but they also
+    /// run when the configuration is reloaded without a restart.</summary>
+    public List<string> AutostartsAlways { get; } = new();
+
     /// <summary>The smallest width a window keeps before the layout
     /// overlaps windows instead of shrinking them further.</summary>
     public int MinWindowWidth { get; set; } = 400;

@@ -127,8 +127,10 @@ on, even when a `for_window` floating rule excluded it: the explicit
 toggle wins.
 
 `exec_always "program"` works like `exec` (autostart at the top level,
-launch command in a binding); this app reloads by restarting, so the two
-are equivalent here.
+launch command in a binding), but it also runs when the configuration is
+reloaded: the tray menu's "Reload configuration" restarts the app with
+`--ignore-exec`, so plain `exec` runs only on a real start (or on demand
+from a binding), while `exec_always` runs on every start and reload.
 
 Quake-style toggling (a terminal that shows and hides from any
 workspace) binds `[class="..." title="..."] scratchpad show`: a hidden

@@ -451,13 +451,26 @@ public class I3ConfigParserTests
             bindsym Mod4+e exec_always notify-send hi
             """);
 
-        var command = Assert.Single(config.Exec);
+        Assert.Empty(config.Exec);
+        var command = Assert.Single(config.AutostartsAlways);
         Assert.Equal("\"%USERPROFILE%\\\\copyq\\\\copyq.exe\"", command);
 
         var binding = Assert.Single(config.Bindings);
         Assert.Equal(ConfigAction.Launch, binding.Action);
         Assert.Equal("notify-send hi", binding.Command);
         Assert.Empty(config.Warnings);
+    }
+
+    [Fact]
+    public void Exec_and_exec_always_land_in_separate_lists()
+    {
+        var config = I3ConfigParser.Parse("""
+            exec start-only.exe
+            exec_always start-always.exe
+            """);
+
+        Assert.Equal(new[] { "start-only.exe" }, config.Exec);
+        Assert.Equal(new[] { "start-always.exe" }, config.AutostartsAlways);
     }
 
     [Fact]
