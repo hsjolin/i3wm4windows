@@ -119,10 +119,16 @@ are already managed keep their workspace until moved by hand.
 
 The focused window toggles between tiling and floating with
 `floating toggle` (default `Win+Shift+Space`): a tiled window is released
-to move and resize freely — visibly inset from the tile it leaves, and
-staying floating across rescans and workspace switches — and a floating
-window joins the tiling of the display it is on, even when a `for_window`
-floating rule excluded it: the explicit toggle wins.
+to move and resize freely — visibly inset from the tile it leaves, always
+on top (`WS_EX_TOPMOST`) so it does not sink behind the tiling when it
+loses the focus, and staying floating across rescans and workspace
+switches — and a floating window joins the tiling of the display it is
+on, even when a `for_window` floating rule excluded it: the explicit
+toggle wins.
+
+`exec_always "program"` works like `exec` (autostart at the top level,
+launch command in a binding); this app reloads by restarting, so the two
+are equivalent here.
 
 Quake-style toggling (a terminal that shows and hides from any
 workspace) binds `[class="..." title="..."] scratchpad show`: a hidden

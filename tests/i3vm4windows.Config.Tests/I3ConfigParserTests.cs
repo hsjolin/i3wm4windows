@@ -444,6 +444,23 @@ public class I3ConfigParserTests
     }
 
     [Fact]
+    public void Exec_always_autostarts_and_works_as_a_binding_command()
+    {
+        var config = I3ConfigParser.Parse("""
+            exec_always --no-startup-id "%USERPROFILE%\\copyq\\copyq.exe"
+            bindsym Mod4+e exec_always notify-send hi
+            """);
+
+        var command = Assert.Single(config.Exec);
+        Assert.Equal("\"%USERPROFILE%\\\\copyq\\\\copyq.exe\"", command);
+
+        var binding = Assert.Single(config.Bindings);
+        Assert.Equal(ConfigAction.Launch, binding.Action);
+        Assert.Equal("notify-send hi", binding.Command);
+        Assert.Empty(config.Warnings);
+    }
+
+    [Fact]
     public void Mode_block_binds_without_the_win_key()
     {
         var config = I3ConfigParser.Parse("""

@@ -432,8 +432,16 @@ internal sealed class WindowManager : IDisposable
                     Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE);
             }
 
+            // Always on top, so a floating window does not sink behind the
+            // tiling when it loses the focus.
+            var style = Win32.GetWindowLongPtr(foreground, Win32.GWL_EXSTYLE);
+            Win32.SetWindowLongPtr(foreground, Win32.GWL_EXSTYLE, style | Win32.WS_EX_TOPMOST);
+
             UnmanageWindow(handle);
             _floatedByUser.Add(handle);
+
+            // The window left its split, so the tab it showed is gone.
+            ApplyLayout();
             return;
         }
 
@@ -441,6 +449,10 @@ internal sealed class WindowManager : IDisposable
         {
             return;
         }
+
+        // Back into the tiling: no longer always on top.
+        var restored = Win32.GetWindowLongPtr(foreground, Win32.GWL_EXSTYLE);
+        Win32.SetWindowLongPtr(foreground, Win32.GWL_EXSTYLE, restored & ~Win32.WS_EX_TOPMOST);
 
         _floatedByUser.Remove(handle);
         _workspaces.AddWindow(handle, ActiveMonitor().DeviceName);

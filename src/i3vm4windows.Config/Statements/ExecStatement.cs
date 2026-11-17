@@ -3,7 +3,7 @@ namespace i3vm4windows.Config.Statements;
 /// <summary>exec "program": starts the program from a binding, runs it
 /// from the bar block as a status command, and at the top level is i3's
 /// autostart.</summary>
-public sealed class ExecStatement : CommandStatement
+public class ExecStatement : CommandStatement
 {
     public override string Name => "exec";
 

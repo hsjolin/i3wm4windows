@@ -15,6 +15,7 @@ public static class ConfigStatementRegistration
         services.AddSingleton<IConfigStatement, ForWindowStatement>();
         services.AddSingleton<IConfigStatement, SetStatement>();
         services.AddSingleton<IConfigStatement, ExecStatement>();
+        services.AddSingleton<IConfigStatement, ExecAlwaysStatement>();
         services.AddSingleton<IConfigStatement, MinWindowWidthStatement>();
         services.AddSingleton<IConfigStatement, BindcodeStatement>();
         services.AddSingleton<IConfigStatement, ModeStatement>();
