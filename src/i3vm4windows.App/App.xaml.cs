@@ -27,6 +27,16 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Dev helper: regenerate app.ico from the same drawing the tray
+        // icon uses, so both are always identical.
+        var writeIcon = Array.IndexOf(e.Args, "--write-icon");
+        if (writeIcon >= 0 && writeIcon + 1 < e.Args.Length)
+        {
+            AppIcon.WriteToFile(e.Args[writeIcon + 1]);
+            Environment.Exit(0);
+            return;
+        }
+
         base.OnStartup(e);
         AppLog.Session();
 

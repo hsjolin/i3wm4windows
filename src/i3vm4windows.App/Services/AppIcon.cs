@@ -24,6 +24,14 @@ internal static class AppIcon
         return new Icon(stream);
     }
 
+    /// <summary>Writes the same icon to an .ico file, for the exe's
+    /// ApplicationIcon — one drawing, both places.</summary>
+    public static void WriteToFile(string path)
+    {
+        using var stream = File.Create(path);
+        WriteIconStream(stream);
+    }
+
     /// <summary>
     /// Assembles an .ico container with PNG frames for every size, the
     /// format Vista and later shells pick the best frame from.
