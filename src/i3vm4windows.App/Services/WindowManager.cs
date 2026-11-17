@@ -214,6 +214,7 @@ internal sealed class WindowManager : IDisposable
             DiscoverNewWindows();
             ApplyLayout();
             RefreshIndicators();
+            EnforceFloatingTopmost();
             RefocusAfterClose();
         }
         catch (Exception error)
@@ -1236,6 +1237,29 @@ internal sealed class WindowManager : IDisposable
         ApplyLayout();
     }
 
+    /// <summary>
+    /// Re-asserts always-on-top on windows the user floated: the style
+    /// normally survives, but nothing should be able to sink them behind
+    /// the tiling.
+    /// </summary>
+    private void EnforceFloatingTopmost()
+    {
+        foreach (var handle in _floatedByUser)
+        {
+            var hwnd = new IntPtr(handle);
+            if (!Win32.IsWindowVisible(hwnd))
+            {
+                continue;
+            }
+
+            var style = Win32.GetWindowLongPtr(hwnd, Win32.GWL_EXSTYLE);
+            if ((style & Win32.WS_EX_TOPMOST) == 0)
+            {
+                Win32.SetWindowLongPtr(hwnd, Win32.GWL_EXSTYLE, (nint)(style | Win32.WS_EX_TOPMOST));
+            }
+        }
+    }
+
     private void ForgetDeadWindows()
     {
         foreach (var handle in _managedHandles.ToList())
@@ -1686,6 +1710,17 @@ internal sealed class WindowManager : IDisposable
                 !ignoreFloatingRules &&
                 rule.Matches(className.ToString(), title.ToString()))
             {
+                // A floating-rule window stays out of the tiling and must
+                // stay above it, so it never sinks behind when unfocused.
+                if (rule.Action == WindowRuleAction.Floating && Win32.IsWindowVisible(hwnd))
+                {
+                    var ex = Win32.GetWindowLongPtr(hwnd, Win32.GWL_EXSTYLE);
+                    if ((ex & Win32.WS_EX_TOPMOST) == 0)
+                    {
+                        Win32.SetWindowLongPtr(hwnd, Win32.GWL_EXSTYLE, (nint)(ex | Win32.WS_EX_TOPMOST));
+                    }
+                }
+
                 return false;
             }
         }
