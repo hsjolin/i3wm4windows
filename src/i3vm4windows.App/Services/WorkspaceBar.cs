@@ -424,6 +424,8 @@ internal sealed class WorkspaceBar : IDisposable
             var settings = bar.View.CoreWebView2.Settings;
             settings.AreDefaultContextMenusEnabled = false;
             settings.IsZoomControlEnabled = false;
+            bar.View.CoreWebView2.ProcessFailed += (_, args) =>
+                AppLog.Warn($"bar browser process failed: {args.ProcessFailedKind}, exit={args.ExitCode}, reason={args.Reason}");
             bar.View.CoreWebView2.NavigationCompleted += (_, args) =>
             {
                 if (!args.IsSuccess)
@@ -454,6 +456,10 @@ internal sealed class WorkspaceBar : IDisposable
         window.UpdateLayout();
         if (!window.IsVisible)
         {
+            // A real size before Show: a 0x0 host window crashes the
+            // WebView2 browser process (E_BOUNDS) when it attaches.
+            window.Width = workArea.Width;
+            window.Height = _config.Height;
             // Park off-screen until the position is known.
             window.Left = -32000;
             window.Top = -32000;
