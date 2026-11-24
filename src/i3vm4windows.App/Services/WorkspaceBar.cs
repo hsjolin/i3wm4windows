@@ -38,9 +38,12 @@ internal sealed class WorkspaceBar : IDisposable
     /// end in an ellipsis.</summary>
     private const double TabMaxWidth = 180;
 
-    /// <summary>The bar's background, matching the old WPF brush.</summary>
+    /// <summary>The bar's background, matching the old WPF brush. Must
+    /// be opaque: a translucent DefaultBackgroundColor makes the WebView2
+    /// host window layered, and the browser process then crashes with a
+    /// breakpoint (0x80000003) on attach.</summary>
     private static readonly System.Windows.Media.Color BarColor =
-        System.Windows.Media.Color.FromArgb(235, 24, 26, 32);
+        System.Windows.Media.Color.FromArgb(255, 24, 26, 32);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -404,37 +407,8 @@ internal sealed class WorkspaceBar : IDisposable
         try
         {
             var environment = await WebViewEnvironment.Value;
-            // The control's HWND appears only after its first render; wait
-            // for the HwndSource before attaching, or the loader fails with
-            // 0x80070578 / E_BOUNDS. Logged for diagnosis.
-            for (var wait = 0; wait < 50; wait++)
-            {
-                if (PresentationSource.FromVisual(bar.View) is HwndSource source &&
-                    source.Handle != IntPtr.Zero)
-                {
-                    AppLog.Info($"bar view hwnd 0x{source.Handle:X} ready after {wait} polls, thread {Environment.CurrentManagedThreadId}");
-                    break;
-                }
-
-                await Task.Delay(100);
-            }
-
-            // The control's HWND appears asynchronously after Loaded, so
-            // attach with a few retries instead of failing on the first
-            // 0x80070578 (invalid window handle).
-            for (var attempt = 1; ; attempt++)
-            {
-                try
-                {
-                    await bar.View.EnsureCoreWebView2Async(environment);
-                    break;
-                }
-                catch (Exception error) when (attempt < 5)
-                {
-                    AppLog.Warn($"bar webview2 attach attempt {attempt} failed (0x{error.HResult:X8}): {error.Message}");
-                    await Task.Delay(300);
-                }
-            }
+            await bar.View.EnsureCoreWebView2Async(environment);
+            AppLog.Info("bar webview2 attached");
 
             var settings = bar.View.CoreWebView2.Settings;
             settings.AreDefaultContextMenusEnabled = false;
@@ -468,18 +442,15 @@ internal sealed class WorkspaceBar : IDisposable
     /// </summary>
     private void Position(Window window, i3vm4windows.Core.Rect workArea)
     {
-        window.UpdateLayout();
         if (!window.IsVisible)
         {
-            // A real size before Show: a 0x0 host window crashes the
-            // WebView2 browser process (E_BOUNDS) when it attaches.
+            // A real size before Show, then park off-screen until the
+            // position is known.
             window.Width = workArea.Width;
             window.Height = _config.Height;
-            // Park off-screen until the position is known.
             window.Left = -32000;
             window.Top = -32000;
             window.Show();
-            window.UpdateLayout();
         }
 
         var handle = new WindowInteropHelper(window).Handle;
