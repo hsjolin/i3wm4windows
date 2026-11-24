@@ -1,13 +1,15 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using i3vm4windows.App.Interop;
 using i3vm4windows.Config;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
 
 namespace i3vm4windows.App.Services;
 
@@ -23,6 +25,9 @@ public sealed record BarTab(string Title, bool Active);
 /// The tiling keeps its distance: the manager takes the strip off the
 /// work area, and this window covers the freed strip, pinned above
 /// everything.
+/// The strip's content is a WebView2 page, not WPF controls: WPF renders
+/// emoji monochrome, Chromium renders them in color (Segoe UI Emoji is a
+/// COLR font). The host posts the state as JSON; the page renders it.
 /// </summary>
 internal sealed class WorkspaceBar : IDisposable
 {
@@ -33,19 +38,29 @@ internal sealed class WorkspaceBar : IDisposable
     /// end in an ellipsis.</summary>
     private const double TabMaxWidth = 180;
 
-    /// <summary>The status font size, also used to measure text.</summary>
-    private readonly System.Windows.Media.FontFamily _fontFamily;
-    private readonly double _fontSize;
+    /// <summary>The bar's background, matching the old WPF brush.</summary>
+    private static readonly System.Windows.Media.Color BarColor =
+        System.Windows.Media.Color.FromArgb(235, 24, 26, 32);
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    /// <summary>The WebView2 environment is shared by every display's
+    /// strip; one browser process pool serves them all.</summary>
+    private static readonly Lazy<Task<CoreWebView2Environment>> WebViewEnvironment =
+        new(() => CoreWebView2Environment.CreateAsync(
+            userDataFolder: System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "i3vm4windows", "webview2")));
 
     private readonly BarConfig _config;
+    private readonly string _fontFamilyCss;
+    private readonly double _fontSize;
     private readonly DispatcherTimer _statusTimer;
     private readonly Dictionary<string, Bar> _bars = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Widest cell each status slot has shown so far, so one
-    /// item growing never moves the others (soft padding).</summary>
-    private readonly List<double> _slotWidths = new();
-
-    private double _charWidth;
     private (ulong Idle, ulong Total)? _lastCpu;
     private bool _statusRunning;
     private bool _disposed;
@@ -54,18 +69,56 @@ internal sealed class WorkspaceBar : IDisposable
     private sealed class Bar : IDisposable
     {
         public required Window Window { get; init; }
-        public required StackPanel Chips { get; init; }
-        public required StackPanel Tabs { get; init; }
-        public required StackPanel Status { get; init; }
+        public required WebView2 View { get; init; }
 
-        public void Dispose() => Window.Close();
+        /// <summary>Set once the page has loaded; messages posted before
+        /// are lost, so the host buffers the state and sends on ready.</summary>
+        public volatile bool Ready;
+
+        public IReadOnlyList<Chip> Chips = Array.Empty<Chip>();
+        public IReadOnlyList<Tab> Tabs = Array.Empty<Tab>();
+        public IReadOnlyList<Slot> Status = Array.Empty<Slot>();
+
+        public void Send()
+        {
+            if (!Ready)
+            {
+                return;
+            }
+
+            var state = new BarState(Chips, Tabs, Status);
+            View.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(state, JsonOptions));
+        }
+
+        public void Dispose()
+        {
+            View.Dispose();
+            Window.Close();
+        }
     }
+
+    private sealed record BarState(
+        IReadOnlyList<Chip> Chips,
+        IReadOnlyList<Tab> Tabs,
+        IReadOnlyList<Slot> Status);
+
+    private sealed record Chip(string Label, bool Active);
+
+    private sealed record Tab(string Title, bool Active);
+
+    /// <summary>One status cell: either text, or a padding spacer of
+    /// <see cref="Padding"/> characters.</summary>
+    private sealed record Slot(string? Text, int Padding);
 
     public WorkspaceBar(BarConfig config)
     {
         _config = config;
-        _fontFamily = TryFontFamily(config.BarFont);
         _fontSize = config.FontSize;
+        // A comma-separated family list becomes a CSS list with each
+        // family quoted, so "Segoe UI, Segoe UI Emoji" works in the page.
+        _fontFamilyCss = string.Join(", ", config.BarFont
+            .Split(',')
+            .Select(part => "\"" + part.Trim().Trim('"') + "\""));
         if (config.Clock || config.Date || config.BarItems.Count > 0)
         {
             _statusTimer = new DispatcherTimer(DispatcherPriority.Background)
@@ -96,8 +149,13 @@ internal sealed class WorkspaceBar : IDisposable
         }
 
         var bar = EnsureBar(output);
-        BuildChips(bar.Chips, workspaces, activeIndex);
-        BuildTabs(bar.Tabs, tabs);
+        bar.Chips = workspaces
+            .Select(index => new Chip(index.ToString(CultureInfo.InvariantCulture), index == activeIndex))
+            .ToList();
+        bar.Tabs = tabs
+            .Select(tab => new Tab(tab.Title, tab.Active))
+            .ToList();
+        bar.Send();
         Position(bar.Window, workArea);
     }
 
@@ -165,13 +223,13 @@ internal sealed class WorkspaceBar : IDisposable
                 switch (items[i].Kind)
                 {
                     case BarItemKind.Cpu:
-                        values[i] = CpuPercent()?.ToString() ?? "";
+                        values[i] = CpuPercent()?.ToString(CultureInfo.InvariantCulture) ?? "";
                         break;
                     case BarItemKind.Ram:
-                        values[i] = MemoryPercent()?.ToString() ?? "";
+                        values[i] = MemoryPercent()?.ToString(CultureInfo.InvariantCulture) ?? "";
                         break;
                     case BarItemKind.Battery:
-                        values[i] = BatteryPercent()?.ToString() ?? "";
+                        values[i] = BatteryPercent()?.ToString(CultureInfo.InvariantCulture) ?? "";
                         break;
                     case BarItemKind.Command:
                         commandTasks.Add((i, RunCommand(items[i].Text)));
@@ -187,9 +245,16 @@ internal sealed class WorkspaceBar : IDisposable
                 values[index] = await output;
             }
 
+            var slots = items
+                .Select((item, i) => item.Kind == BarItemKind.Padding
+                    ? new Slot(null, Math.Max(1, item.Padding))
+                    : new Slot(values.TryGetValue(i, out var value) ? value : "", 0))
+                .ToList();
+
             foreach (var bar in _bars.Values)
             {
-                BuildStatus(bar.Status, items, values);
+                bar.Status = slots;
+                bar.Send();
             }
         }
         finally
@@ -281,29 +346,10 @@ internal sealed class WorkspaceBar : IDisposable
             return bar;
         }
 
-        var chips = new StackPanel
+        var view = new WebView2
         {
-            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            DefaultBackgroundColor = System.Drawing.Color.FromArgb(BarColor.A, BarColor.R, BarColor.G, BarColor.B),
         };
-        var tabs = new StackPanel
-        {
-            Orientation = System.Windows.Controls.Orientation.Horizontal,
-        };
-        var status = new StackPanel
-        {
-            Orientation = System.Windows.Controls.Orientation.Horizontal,
-        };
-        var content = new DockPanel
-        {
-            Background = new SolidColorBrush(
-                System.Windows.Media.Color.FromArgb(235, 24, 26, 32)),
-        };
-        DockPanel.SetDock(chips, Dock.Left);
-        DockPanel.SetDock(status, Dock.Right);
-        content.Children.Add(chips);
-        content.Children.Add(status);
-        content.Children.Add(tabs);
-
         var window = new Window
         {
             WindowStyle = WindowStyle.None,
@@ -312,8 +358,8 @@ internal sealed class WorkspaceBar : IDisposable
             ShowActivated = false,
             Focusable = false,
             Topmost = true,
-            Background = System.Windows.Media.Brushes.Transparent,
-            Content = content,
+            Background = new SolidColorBrush(BarColor),
+            Content = view,
         };
 
         // Tool window so the shell and Alt+Tab ignore it, no-activate so
@@ -330,11 +376,32 @@ internal sealed class WorkspaceBar : IDisposable
         _bars[output] = bar = new Bar
         {
             Window = window,
-            Chips = chips,
-            Tabs = tabs,
-            Status = status,
+            View = view,
         };
+        _ = InitViewAsync(bar);
         return bar;
+    }
+
+    private async Task InitViewAsync(Bar bar)
+    {
+        try
+        {
+            var environment = await WebViewEnvironment.Value;
+            await bar.View.EnsureCoreWebView2Async(environment);
+            var settings = bar.View.CoreWebView2.Settings;
+            settings.AreDefaultContextMenusEnabled = false;
+            settings.IsZoomControlEnabled = false;
+            bar.View.CoreWebView2.NavigationCompleted += (_, _) =>
+            {
+                bar.Ready = true;
+                bar.Send();
+            };
+            bar.View.CoreWebView2.NavigateToString(BuildHtml());
+        }
+        catch (Exception error)
+        {
+            AppLog.Warn($"bar webview2 init failed: {error.Message}");
+        }
     }
 
     /// <summary>
@@ -364,144 +431,93 @@ internal sealed class WorkspaceBar : IDisposable
             Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE);
     }
 
-    private void BuildChips(StackPanel chips, IReadOnlyList<int> workspaces, int activeIndex)
-    {
-        chips.Children.Clear();
-        foreach (var index in workspaces)
-        {
-            var active = index == activeIndex;
-            var chip = new Border
-            {
-                MinWidth = 28,
-                Padding = new Thickness(8, 2, 8, 2),
-                Margin = new Thickness(2, 2, 2, 2),
-                VerticalAlignment = VerticalAlignment.Center,
-                Background = active
-                    ? System.Windows.Media.Brushes.White
-                    : System.Windows.Media.Brushes.Transparent,
-                Child = new TextBlock
-                {
-                    Text = index.ToString(),
-                    FontSize = _fontSize,
-                    FontFamily = _fontFamily,
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground = active
-                        ? System.Windows.Media.Brushes.Black
-                        : System.Windows.Media.Brushes.White,
-                    HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-                },
-            };
-            chips.Children.Add(chip);
-        }
-    }
-
-    private void BuildTabs(StackPanel tabs, IReadOnlyList<BarTab> barTabs)
-    {
-        tabs.Children.Clear();
-        foreach (var tab in barTabs)
-        {
-            tabs.Children.Add(new Border
-            {
-                MaxWidth = TabMaxWidth,
-                Padding = new Thickness(10, 2, 10, 2),
-                Margin = new Thickness(2, 2, 2, 2),
-                VerticalAlignment = VerticalAlignment.Center,
-                Background = tab.Active
-                    ? System.Windows.Media.Brushes.White
-                    : System.Windows.Media.Brushes.Transparent,
-                Child = new TextBlock
-                {
-                    Text = tab.Title,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    FontSize = _fontSize,
-                    FontFamily = _fontFamily,
-                    Foreground = tab.Active
-                        ? System.Windows.Media.Brushes.Black
-                        : System.Windows.Media.Brushes.White,
-                },
-            });
-        }
-    }
-
-    /// <summary>The width of one character at the bar's font, for
-    /// padding spacers.</summary>
-    /// <summary>The configured bar font, falling back to Segoe UI with
-    /// the emoji fallback when the configured family does not exist.</summary>
-    private static System.Windows.Media.FontFamily TryFontFamily(string name)
-    {
-        try
-        {
-            return new System.Windows.Media.FontFamily(name);
-        }
-        catch
-        {
-            return new System.Windows.Media.FontFamily("Segoe UI, Segoe UI Emoji");
-        }
-    }
-
-    private double CharWidth => _charWidth > 0 ? _charWidth : _charWidth = Measure("0");
-
-    private double Measure(string text) => new FormattedText(
-        text,
-        CultureInfo.InvariantCulture,
-        System.Windows.FlowDirection.LeftToRight,
-        new Typeface(_fontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
-        _fontSize,
-        System.Windows.Media.Brushes.White,
-        1.0).WidthIncludingTrailingWhitespace;
-
     /// <summary>
-    /// Lays the status items out left to right with no margins. Every
-    /// item gets a cell as wide as the widest it has ever been, so an
-    /// item growing within that width never moves its neighbours — the
-    /// padding is soft. padding x items are fixed spacers of x
-    /// characters.
+    /// The strip's page: a flex row of workspace chips, tab titles and
+    /// status cells. The configured font family and size are injected as
+    /// a CSS font stack, so color emoji fall back to Segoe UI Emoji in
+    /// Chromium. Status cells keep the widest width they have ever had,
+    /// so one growing item never moves its neighbours (soft padding);
+    /// padding slots are fixed spacers of that many characters.
     /// </summary>
-    private void BuildStatus(
-        StackPanel status,
-        IReadOnlyList<BarItem> items,
-        IReadOnlyDictionary<int, string> values)
+    private string BuildHtml()
     {
-        status.Children.Clear();
-        while (_slotWidths.Count < items.Count)
-        {
-            _slotWidths.Add(0);
-        }
+        var family = _fontFamilyCss;
+        var size = _fontSize.ToString(CultureInfo.InvariantCulture);
+        return $$"""
+            <!doctype html>
+            <html>
+            <head>
+            <meta charset="utf-8">
+            <style>
+            html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: rgb(24 26 32); }
+            body {
+              font-family: {{family}}, sans-serif;
+              font-size: {{size}}px;
+              color: #fff;
+              user-select: none;
+              -webkit-user-select: none;
+            }
+            #bar { display: flex; align-items: center; height: 100%; box-sizing: border-box; }
+            #chips, #tabs, #status { display: flex; align-items: center; }
+            #tabs { flex: 1; overflow: hidden; }
+            #status { margin-left: auto; }
+            .chip {
+              box-sizing: border-box; min-width: 28px; text-align: center;
+              padding: 2px 8px; margin: 2px; font-weight: 600;
+            }
+            .tab {
+              max-width: {{TabMaxWidth.ToString(CultureInfo.InvariantCulture)}}px;
+              padding: 2px 10px; margin: 2px;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            }
+            .active { background: #fff; color: #000; }
+            .slot { white-space: nowrap; }
+            </style>
+            </head>
+            <body>
+            <div id="bar"><div id="chips"></div><div id="tabs"></div><div id="status"></div></div>
+            <script>
+            const chipsEl = document.getElementById('chips');
+            const tabsEl = document.getElementById('tabs');
+            const statusEl = document.getElementById('status');
+            const slotWidths = [];
+            let charWidth = 0;
 
-        for (var i = 0; i < items.Count; i++)
-        {
-            var item = items[i];
-            if (item.Kind == BarItemKind.Padding)
-            {
-                status.Children.Add(new Border
-                {
-                    Width = Math.Max(1, item.Padding) * CharWidth,
-                    Margin = new Thickness(0),
-                });
-                continue;
+            function cell(className, text) {
+              const d = document.createElement('div');
+              d.className = className;
+              d.textContent = text;
+              return d;
             }
 
-            var text = values.TryGetValue(i, out var value) ? value : "";
-            var width = Measure(text);
-            if (width > _slotWidths[i])
-            {
-                _slotWidths[i] = width;
+            function measureChar() {
+              const ctx = document.createElement('canvas').getContext('2d');
+              ctx.font = '{{size}}px {{family}}';
+              charWidth = ctx.measureText('0').width || {{size}} * 0.6;
             }
 
-            status.Children.Add(new Border
-            {
-                Width = _slotWidths[i],
-                Margin = new Thickness(0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Child = new TextBlock
-                {
-                    Text = text,
-                    FontSize = _fontSize,
-                    FontFamily = _fontFamily,
-                    Foreground = System.Windows.Media.Brushes.White,
-                    VerticalAlignment = VerticalAlignment.Center,
-                },
-            });
-        }
+            function render(m) {
+              chipsEl.replaceChildren(...m.chips.map(c => cell('chip' + (c.active ? ' active' : ''), c.label)));
+              tabsEl.replaceChildren(...m.tabs.map(t => cell('tab' + (t.active ? ' active' : ''), t.title)));
+              statusEl.replaceChildren(...m.status.map(s => cell('slot', s.text == null ? '' : s.text)));
+              m.status.forEach((s, i) => {
+                const d = statusEl.children[i];
+                if (s.text == null) {
+                  d.style.width = (Math.max(1, s.padding) * charWidth) + 'px';
+                } else {
+                  const w = d.offsetWidth;
+                  if (w > (slotWidths[i] || 0)) { slotWidths[i] = w; }
+                  d.style.width = slotWidths[i] + 'px';
+                }
+              });
+            }
+
+            measureChar();
+            document.fonts.ready.then(measureChar);
+            window.chrome.webview.addEventListener('message', e => render(e.data));
+            </script>
+            </body>
+            </html>
+            """;
     }
 }

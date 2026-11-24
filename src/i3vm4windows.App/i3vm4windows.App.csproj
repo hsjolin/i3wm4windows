@@ -15,4 +15,10 @@
     <ProjectReference Include="..\i3vm4windows.Config\i3vm4windows.Config.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The bar renders through WebView2 so emoji show in color;
+         WPF only renders monochrome emoji glyphs. -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+  </ItemGroup>
+
 </Project>
