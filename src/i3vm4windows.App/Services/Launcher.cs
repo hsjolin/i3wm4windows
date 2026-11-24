@@ -66,11 +66,16 @@ internal static class Launcher
 
         try
         {
+            // Never show a console window for exec'd programs: start
+            // directly instead of through the shell.
             Process.Start(new ProcessStartInfo
             {
                 FileName = fileName,
                 Arguments = arguments,
-                UseShellExecute = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory =
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             });
         }
         catch (Exception error)

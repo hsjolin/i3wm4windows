@@ -64,6 +64,26 @@ public sealed record Binding(
     string Mode = "default",
     Action<IConfigRuntime, WindowRule?>? Run = null);
 
+/// <summary>The kind of one status item in the bar block.</summary>
+public enum BarItemKind
+{
+    /// <summary>Literal text: print "...".</summary>
+    Print,
+    /// <summary>The first output line of a command: exec ...</summary>
+    Command,
+    /// <summary>CPU load as a bare number (0-100): cpu.</summary>
+    Cpu,
+    /// <summary>Memory load as a bare number (0-100): ram (memory).</summary>
+    Ram,
+    /// <summary>Battery charge as a bare number (0-100): battery.</summary>
+    Battery,
+    /// <summary>Fixed-width spacer: padding x.</summary>
+    Padding,
+}
+
+/// <summary>One status item of the bar, in configuration order.</summary>
+public sealed record BarItem(BarItemKind Kind, string Text = "", int Padding = 0);
+
 /// <summary>
 /// The bar's configuration, from the bar block of the configuration
 /// file. The defaults describe the plain bar: top of every display,
@@ -74,11 +94,20 @@ public sealed record BarConfig(
     int Height = 30,
     bool Clock = false,
     bool Date = false,
-    bool Cpu = false,
-    bool Memory = false,
-    IReadOnlyList<string>? StatusCommands = null)
+    IReadOnlyList<string>? StatusCommands = null,
+    IReadOnlyList<BarItem>? Items = null,
+    string? Font = null,
+    double FontSize = 13)
 {
     public IReadOnlyList<string> Commands => StatusCommands ?? Array.Empty<string>();
+
+    /// <summary>The status items in configuration order (print, exec,
+    /// cpu, ram, battery, padding).</summary>
+    public IReadOnlyList<BarItem> BarItems => Items ?? Array.Empty<BarItem>();
+
+    /// <summary>The bar font family; Segoe UI Emoji as fallback renders
+    /// color emoji. Overridden by the bar block's font directive.</summary>
+    public string BarFont => Font ?? "Segoe UI, Segoe UI Emoji";
 }
 
 /// <summary>The result of parsing a configuration file.</summary>

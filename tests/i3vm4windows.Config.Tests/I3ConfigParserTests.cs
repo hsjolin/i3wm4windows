@@ -796,8 +796,11 @@ public class I3ConfigParserTests
               height 40
               clock yes
               date no
-              cpu yes
-              memory yes
+              print CPU
+              padding 2
+              cpu
+              ram
+              battery
               exec powershell -c "Get-Random"
             }
             """);
@@ -806,9 +809,12 @@ public class I3ConfigParserTests
         Assert.Equal("bottom", bar.Position);
         Assert.Equal(40, bar.Height);
         Assert.True(bar.Clock);
+        Assert.Equal(
+            new[] { BarItemKind.Print, BarItemKind.Padding, BarItemKind.Cpu, BarItemKind.Ram, BarItemKind.Battery, BarItemKind.Command },
+            bar.BarItems.Select(i => i.Kind).ToArray());
+        Assert.Equal("CPU", bar.BarItems[0].Text);
+        Assert.Equal(2, bar.BarItems[1].Padding);
         Assert.False(bar.Date);
-        Assert.True(bar.Cpu);
-        Assert.True(bar.Memory);
         var command = Assert.Single(bar.Commands);
         Assert.Equal("powershell -c \"Get-Random\"", command);
         Assert.Empty(config.Warnings);
@@ -826,9 +832,8 @@ public class I3ConfigParserTests
         Assert.Equal(30, bar.Height);
         Assert.False(bar.Clock);
         Assert.False(bar.Date);
-        Assert.False(bar.Cpu);
-        Assert.False(bar.Memory);
         Assert.Empty(bar.Commands);
+        Assert.Empty(bar.BarItems);
     }
 
     [Fact]
@@ -847,5 +852,31 @@ public class I3ConfigParserTests
         Assert.Equal(30, config.Bar!.Height);
         Assert.False(config.Bar!.Clock);
         Assert.Equal(4, config.Warnings.Count);
+    }
+    [Fact]
+    public void Bar_font_directive_sets_family_and_size()
+    {
+        var config = I3ConfigParser.Parse("""
+            bar {
+              font "Segoe UI Emoji" 16
+            }
+            """);
+
+        Assert.Equal("Segoe UI Emoji", config.Bar!.BarFont);
+        Assert.Equal(16, config.Bar!.FontSize);
+        Assert.Empty(config.Warnings);
+    }
+
+    [Fact]
+    public void Bar_font_defaults_to_segou_with_emoji_fallback()
+    {
+        var config = I3ConfigParser.Parse("""
+            bar {
+              height 40
+            }
+            """);
+
+        Assert.Equal("Segoe UI, Segoe UI Emoji", config.Bar!.BarFont);
+        Assert.Equal(13, config.Bar!.FontSize);
     }
 }

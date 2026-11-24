@@ -27,10 +27,17 @@ public static class ConfigStatementRegistration
             "clock", (bar, value) => bar.Clock = value));
         services.AddSingleton<IConfigStatement>(new BarFlagStatement(
             "date", (bar, value) => bar.Date = value));
-        services.AddSingleton<IConfigStatement>(new BarFlagStatement(
-            "cpu", (bar, value) => bar.Cpu = value));
-        services.AddSingleton<IConfigStatement>(new BarFlagStatement(
-            "memory", (bar, value) => bar.Memory = value));
+        services.AddSingleton<IConfigStatement, BarPrintStatement>();
+        services.AddSingleton<IConfigStatement, BarPaddingStatement>();
+        services.AddSingleton<IConfigStatement, BarFontStatement>();
+        services.AddSingleton<IConfigStatement>(
+            new BarValueStatement("cpu", BarItemKind.Cpu));
+        services.AddSingleton<IConfigStatement>(
+            new BarValueStatement("ram", BarItemKind.Ram));
+        services.AddSingleton<IConfigStatement>(
+            new BarValueStatement("memory", BarItemKind.Ram));
+        services.AddSingleton<IConfigStatement>(
+            new BarValueStatement("battery", BarItemKind.Battery));
         services.AddSingleton<IConfigStatement, KillStatement>();
         services.AddSingleton<IConfigStatement, FocusStatement>();
         services.AddSingleton<IConfigStatement, MoveStatement>();

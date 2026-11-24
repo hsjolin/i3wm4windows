@@ -1,0 +1,24 @@
+namespace i3vm4windows.Config.Statements;
+
+/// <summary>
+/// padding x: a fixed-width spacer of x characters between status
+/// items. Padding is soft: items keep the widest cell they have shown,
+/// so one item growing does not move the others.
+/// </summary>
+public sealed class BarPaddingStatement : BarDirectiveStatement
+{
+    public override string Name => "padding";
+
+    protected override void Apply(ConfigContext context, IReadOnlyList<string> parameters)
+    {
+        if (parameters.Count != 1 ||
+            !int.TryParse(parameters[0], out var padding) ||
+            padding < 0)
+        {
+            context.Warn($"padding needs a non-negative number: {context.Line}");
+            return;
+        }
+
+        context.Bar.Items.Add(new BarItem(BarItemKind.Padding, Padding: padding));
+    }
+}

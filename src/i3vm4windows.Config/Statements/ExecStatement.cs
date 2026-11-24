@@ -24,7 +24,9 @@ public class ExecStatement : CommandStatement
 
         if (context.InBar)
         {
-            context.Bar.Commands.Add(string.Join(' ', rest));
+            var commandText = string.Join(' ', rest);
+            context.Bar.Commands.Add(commandText);
+            context.Bar.Items.Add(new BarItem(BarItemKind.Command, commandText));
             return;
         }
 

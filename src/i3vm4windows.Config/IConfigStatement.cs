@@ -127,10 +127,17 @@ public sealed class BarSettings
     public int Height = 30;
     public bool Clock;
     public bool Date;
-    public bool Cpu;
-    public bool Memory;
     public List<string> Commands = new();
 
+    /// <summary>The status items in the order the bar block lists
+    /// them: print, padding, cpu, ram, battery, exec.</summary>
+    public List<BarItem> Items = new();
+
+    /// <summary>The bar block's font directive: family and optional
+    /// size in px (i3 syntax: font pango:family 13).</summary>
+    public string? Font;
+    public double? FontSize;
+
     public BarConfig ToConfig() => new(
-        Position, Height, Clock, Date, Cpu, Memory, Commands);
+        Position, Height, Clock, Date, Commands, Items, Font, FontSize ?? 13);
 }

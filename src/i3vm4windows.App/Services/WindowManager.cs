@@ -959,14 +959,21 @@ internal sealed class WindowManager : IDisposable
                 break;
 
             case Win32.EVENT_OBJECT_DESTROY:
-                // A managed foreground window closing must hand the focus
-                // back to its workspace's previously used window — note it
-                // before the refresh removes the window from the tree.
-                if (_managedHandles.Contains(hwnd.ToInt64()) &&
-                    hwnd == Win32.GetForegroundWindow())
+                // A managed window that had the focus is closing: note it
+                // before the refresh removes it from the tree, so the focus
+                // can be handed back to its workspace's previously used
+                // window on the same display. This out-of-context event can
+                // be delivered after Win32 has already moved the real
+                // foreground to another window (possibly on another
+                // screen), so the model's focus is the reliable signal.
+                var destroyed = hwnd.ToInt64();
+                var destroyedOwner = _workspaces.FindOwner(destroyed);
+                if (_managedHandles.Contains(destroyed) &&
+                    (destroyedOwner?.FocusedWindowHandle == destroyed ||
+                     hwnd == Win32.GetForegroundWindow()))
                 {
-                    _deadForegroundHandle = hwnd.ToInt64();
-                    _deadForegroundWorkspace = _workspaces.FindOwner(_deadForegroundHandle)?.Index;
+                    _deadForegroundHandle = destroyed;
+                    _deadForegroundWorkspace = destroyedOwner?.Index;
                 }
 
                 DebounceRefresh();
@@ -1015,8 +1022,10 @@ internal sealed class WindowManager : IDisposable
             return;
         }
 
-        ActivateForeground(next);
+        // Show the window taking over the focus first (in a tabbed split
+        // it was hidden), then activate it — like FocusRelative does.
         ApplyLayout();
+        ActivateForeground(next);
     }
 
     /// <summary>
@@ -1716,7 +1725,13 @@ internal sealed class WindowManager : IDisposable
             {
                 // A floating-rule window stays out of the tiling and must
                 // stay above it, so it never sinks behind when unfocused.
-                if (rule.Action == WindowRuleAction.Floating && Win32.IsWindowVisible(hwnd))
+                // Pin it only when the style is missing: re-asserting
+                // HWND_TOPMOST on every rescan would raise the window above
+                // the other floating ones each time, and they would fight
+                // over the top spot.
+                if (rule.Action == WindowRuleAction.Floating &&
+                    Win32.IsWindowVisible(hwnd) &&
+                    (extendedStyle & Win32.WS_EX_TOPMOST) == 0)
                 {
                     Win32.SetWindowPos(
                         hwnd, Win32.HWND_TOPMOST, 0, 0, 0, 0,

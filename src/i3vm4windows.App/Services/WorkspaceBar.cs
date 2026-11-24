@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -18,10 +19,10 @@ public sealed record BarTab(string Title, bool Active);
 /// An i3bar-style strip along the top (or bottom) of every display: the
 /// bound workspace numbers with the active one highlighted, every tab's
 /// title when the workspace shows tabs, and the configured status items
-/// — clock, date, CPU and memory usage, and the first output line of
-/// exec commands — along the right edge. The tiling keeps its distance:
-/// the manager takes the strip off the work area, and this window
-/// covers the freed strip, pinned above everything.
+/// — print, exec, cpu, ram, battery and padding — along the right edge.
+/// The tiling keeps its distance: the manager takes the strip off the
+/// work area, and this window covers the freed strip, pinned above
+/// everything.
 /// </summary>
 internal sealed class WorkspaceBar : IDisposable
 {
@@ -32,9 +33,19 @@ internal sealed class WorkspaceBar : IDisposable
     /// end in an ellipsis.</summary>
     private const double TabMaxWidth = 180;
 
+    /// <summary>The status font size, also used to measure text.</summary>
+    private readonly System.Windows.Media.FontFamily _fontFamily;
+    private readonly double _fontSize;
+
     private readonly BarConfig _config;
     private readonly DispatcherTimer _statusTimer;
     private readonly Dictionary<string, Bar> _bars = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Widest cell each status slot has shown so far, so one
+    /// item growing never moves the others (soft padding).</summary>
+    private readonly List<double> _slotWidths = new();
+
+    private double _charWidth;
     private (ulong Idle, ulong Total)? _lastCpu;
     private bool _statusRunning;
     private bool _disposed;
@@ -53,8 +64,9 @@ internal sealed class WorkspaceBar : IDisposable
     public WorkspaceBar(BarConfig config)
     {
         _config = config;
-        if (config.Clock || config.Date || config.Cpu || config.Memory ||
-            config.Commands.Count > 0)
+        _fontFamily = TryFontFamily(config.BarFont);
+        _fontSize = config.FontSize;
+        if (config.Clock || config.Date || config.BarItems.Count > 0)
         {
             _statusTimer = new DispatcherTimer(DispatcherPriority.Background)
             {
@@ -132,36 +144,52 @@ internal sealed class WorkspaceBar : IDisposable
         _statusRunning = true;
         try
         {
-            var parts = new List<string>();
+            var items = new List<BarItem>();
             if (_config.Clock)
             {
-                parts.Add(DateTime.Now.ToString("HH:mm"));
+                items.Add(new BarItem(BarItemKind.Print, DateTime.Now.ToString("HH:mm")));
             }
 
             if (_config.Date)
             {
-                parts.Add(DateTime.Now.ToString("yyyy-MM-dd"));
+                items.Add(new BarItem(BarItemKind.Print, DateTime.Now.ToString("yyyy-MM-dd")));
             }
 
-            if (_config.Cpu && CpuPercent() is { } cpu)
+            items.AddRange(_config.BarItems);
+
+            // One value per item index; commands run in parallel.
+            var values = new Dictionary<int, string>(items.Count);
+            var commandTasks = new List<(int Index, Task<string> Output)>();
+            for (var i = 0; i < items.Count; i++)
             {
-                parts.Add($"{cpu:F0}% CPU");
+                switch (items[i].Kind)
+                {
+                    case BarItemKind.Cpu:
+                        values[i] = CpuPercent()?.ToString() ?? "";
+                        break;
+                    case BarItemKind.Ram:
+                        values[i] = MemoryPercent()?.ToString() ?? "";
+                        break;
+                    case BarItemKind.Battery:
+                        values[i] = BatteryPercent()?.ToString() ?? "";
+                        break;
+                    case BarItemKind.Command:
+                        commandTasks.Add((i, RunCommand(items[i].Text)));
+                        break;
+                    default:
+                        values[i] = items[i].Text;
+                        break;
+                }
             }
 
-            if (_config.Memory && MemoryPercent() is { } memory)
+            foreach (var (index, output) in commandTasks)
             {
-                parts.Add($"RAM {memory}%");
-            }
-
-            if (_config.Commands.Count > 0)
-            {
-                var outputs = await Task.WhenAll(_config.Commands.Select(RunCommand));
-                parts.AddRange(outputs.Where(output => output.Length > 0));
+                values[index] = await output;
             }
 
             foreach (var bar in _bars.Values)
             {
-                BuildStatus(bar.Status, parts);
+                BuildStatus(bar.Status, items, values);
             }
         }
         finally
@@ -204,6 +232,14 @@ internal sealed class WorkspaceBar : IDisposable
             dwLength = (uint)Marshal.SizeOf<Win32.MEMORYSTATUSEX>(),
         };
         return Win32.GlobalMemoryStatusEx(ref status) ? (int)status.dwMemoryLoad : null;
+    }
+
+    /// <summary>Battery charge 0-100, or null when unknown (255).</summary>
+    private static int? BatteryPercent()
+    {
+        return Win32.GetSystemPowerStatus(out var status) && status.BatteryLifePercent <= 100
+            ? status.BatteryLifePercent
+            : null;
     }
 
     /// <summary>
@@ -328,7 +364,7 @@ internal sealed class WorkspaceBar : IDisposable
             Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE);
     }
 
-    private static void BuildChips(StackPanel chips, IReadOnlyList<int> workspaces, int activeIndex)
+    private void BuildChips(StackPanel chips, IReadOnlyList<int> workspaces, int activeIndex)
     {
         chips.Children.Clear();
         foreach (var index in workspaces)
@@ -346,7 +382,8 @@ internal sealed class WorkspaceBar : IDisposable
                 Child = new TextBlock
                 {
                     Text = index.ToString(),
-                    FontSize = 14,
+                    FontSize = _fontSize,
+                    FontFamily = _fontFamily,
                     FontWeight = FontWeights.SemiBold,
                     Foreground = active
                         ? System.Windows.Media.Brushes.Black
@@ -358,7 +395,7 @@ internal sealed class WorkspaceBar : IDisposable
         }
     }
 
-    private static void BuildTabs(StackPanel tabs, IReadOnlyList<BarTab> barTabs)
+    private void BuildTabs(StackPanel tabs, IReadOnlyList<BarTab> barTabs)
     {
         tabs.Children.Clear();
         foreach (var tab in barTabs)
@@ -376,7 +413,8 @@ internal sealed class WorkspaceBar : IDisposable
                 {
                     Text = tab.Title,
                     TextTrimming = TextTrimming.CharacterEllipsis,
-                    FontSize = 13,
+                    FontSize = _fontSize,
+                    FontFamily = _fontFamily,
                     Foreground = tab.Active
                         ? System.Windows.Media.Brushes.Black
                         : System.Windows.Media.Brushes.White,
@@ -385,18 +423,84 @@ internal sealed class WorkspaceBar : IDisposable
         }
     }
 
-    private static void BuildStatus(StackPanel status, IReadOnlyList<string> parts)
+    /// <summary>The width of one character at the bar's font, for
+    /// padding spacers.</summary>
+    /// <summary>The configured bar font, falling back to Segoe UI with
+    /// the emoji fallback when the configured family does not exist.</summary>
+    private static System.Windows.Media.FontFamily TryFontFamily(string name)
+    {
+        try
+        {
+            return new System.Windows.Media.FontFamily(name);
+        }
+        catch
+        {
+            return new System.Windows.Media.FontFamily("Segoe UI, Segoe UI Emoji");
+        }
+    }
+
+    private double CharWidth => _charWidth > 0 ? _charWidth : _charWidth = Measure("0");
+
+    private double Measure(string text) => new FormattedText(
+        text,
+        CultureInfo.InvariantCulture,
+        System.Windows.FlowDirection.LeftToRight,
+        new Typeface(_fontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
+        _fontSize,
+        System.Windows.Media.Brushes.White,
+        1.0).WidthIncludingTrailingWhitespace;
+
+    /// <summary>
+    /// Lays the status items out left to right with no margins. Every
+    /// item gets a cell as wide as the widest it has ever been, so an
+    /// item growing within that width never moves its neighbours — the
+    /// padding is soft. padding x items are fixed spacers of x
+    /// characters.
+    /// </summary>
+    private void BuildStatus(
+        StackPanel status,
+        IReadOnlyList<BarItem> items,
+        IReadOnlyDictionary<int, string> values)
     {
         status.Children.Clear();
-        foreach (var part in parts)
+        while (_slotWidths.Count < items.Count)
         {
-            status.Children.Add(new TextBlock
+            _slotWidths.Add(0);
+        }
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            if (item.Kind == BarItemKind.Padding)
             {
-                Text = part,
-                FontSize = 13,
-                Foreground = System.Windows.Media.Brushes.White,
+                status.Children.Add(new Border
+                {
+                    Width = Math.Max(1, item.Padding) * CharWidth,
+                    Margin = new Thickness(0),
+                });
+                continue;
+            }
+
+            var text = values.TryGetValue(i, out var value) ? value : "";
+            var width = Measure(text);
+            if (width > _slotWidths[i])
+            {
+                _slotWidths[i] = width;
+            }
+
+            status.Children.Add(new Border
+            {
+                Width = _slotWidths[i],
+                Margin = new Thickness(0),
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(12, 0, 12, 0),
+                Child = new TextBlock
+                {
+                    Text = text,
+                    FontSize = _fontSize,
+                    FontFamily = _fontFamily,
+                    Foreground = System.Windows.Media.Brushes.White,
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
             });
         }
     }
