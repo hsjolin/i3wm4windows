@@ -161,7 +161,7 @@ internal sealed class WorkspaceBar : IDisposable
             .Select(tab => new Tab(tab.Title, tab.Active))
             .ToList();
         bar.Send();
-        Position(bar, workArea);
+        Position(bar.Window, workArea);
     }
 
     /// <summary>Closes the strips of displays that are gone.</summary>
@@ -384,6 +384,18 @@ internal sealed class WorkspaceBar : IDisposable
                 extended | (nint)Win32.WS_EX_TOOLWINDOW | (nint)Win32.WS_EX_NOACTIVATE);
         };
 
+        // WebView2 can only attach once the control itself has its HWND,
+        // which happens at Loaded — not at SourceInitialized, and not
+        // right after Show in the same dispatcher pass.
+        window.Loaded += (_, _) =>
+        {
+            if (!bar.InitStarted)
+            {
+                bar.InitStarted = true;
+                _ = InitViewAsync(bar);
+            }
+        };
+
         return bar;
     }
 
@@ -392,7 +404,23 @@ internal sealed class WorkspaceBar : IDisposable
         try
         {
             var environment = await WebViewEnvironment.Value;
-            await bar.View.EnsureCoreWebView2Async(environment);
+            // The control's HWND appears asynchronously after Loaded, so
+            // attach with a few retries instead of failing on the first
+            // 0x80070578 (invalid window handle).
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    await bar.View.EnsureCoreWebView2Async(environment);
+                    break;
+                }
+                catch (Exception error) when (attempt < 5)
+                {
+                    AppLog.Warn($"bar webview2 attach attempt {attempt} failed: {error.Message}");
+                    await Task.Delay(300);
+                }
+            }
+
             var settings = bar.View.CoreWebView2.Settings;
             settings.AreDefaultContextMenusEnabled = false;
             settings.IsZoomControlEnabled = false;
@@ -421,9 +449,8 @@ internal sealed class WorkspaceBar : IDisposable
     /// work area; both are in physical pixels, so the positioning goes
     /// through Win32, never through the DIP-space of the WPF window.
     /// </summary>
-    private void Position(Bar bar, i3vm4windows.Core.Rect workArea)
+    private void Position(Window window, i3vm4windows.Core.Rect workArea)
     {
-        var window = bar.Window;
         window.UpdateLayout();
         if (!window.IsVisible)
         {
@@ -432,14 +459,6 @@ internal sealed class WorkspaceBar : IDisposable
             window.Top = -32000;
             window.Show();
             window.UpdateLayout();
-        }
-
-        // Now that the window is shown and laid out, both it and the
-        // WebView2 control have their HWNDs — safe to attach the browser.
-        if (!bar.InitStarted)
-        {
-            bar.InitStarted = true;
-            _ = InitViewAsync(bar);
         }
 
         var handle = new WindowInteropHelper(window).Handle;
