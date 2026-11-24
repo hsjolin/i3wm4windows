@@ -404,6 +404,21 @@ internal sealed class WorkspaceBar : IDisposable
         try
         {
             var environment = await WebViewEnvironment.Value;
+            // The control's HWND appears only after its first render; wait
+            // for the HwndSource before attaching, or the loader fails with
+            // 0x80070578 / E_BOUNDS. Logged for diagnosis.
+            for (var wait = 0; wait < 50; wait++)
+            {
+                if (PresentationSource.FromVisual(bar.View) is HwndSource source &&
+                    source.Handle != IntPtr.Zero)
+                {
+                    AppLog.Info($"bar view hwnd 0x{source.Handle:X} ready after {wait} polls, thread {Environment.CurrentManagedThreadId}");
+                    break;
+                }
+
+                await Task.Delay(100);
+            }
+
             // The control's HWND appears asynchronously after Loaded, so
             // attach with a few retries instead of failing on the first
             // 0x80070578 (invalid window handle).
@@ -416,7 +431,7 @@ internal sealed class WorkspaceBar : IDisposable
                 }
                 catch (Exception error) when (attempt < 5)
                 {
-                    AppLog.Warn($"bar webview2 attach attempt {attempt} failed: {error.Message}");
+                    AppLog.Warn($"bar webview2 attach attempt {attempt} failed (0x{error.HResult:X8}): {error.Message}");
                     await Task.Delay(300);
                 }
             }
