@@ -362,8 +362,15 @@ internal sealed class WorkspaceBar : IDisposable
             Content = view,
         };
 
+        _bars[output] = bar = new Bar
+        {
+            Window = window,
+            View = view,
+        };
+
         // Tool window so the shell and Alt+Tab ignore it, no-activate so
-        // it never steals focus.
+        // it never steals focus. WebView2 needs the window handle, which
+        // only exists from SourceInitialized on — so the view starts there.
         window.SourceInitialized += (_, _) =>
         {
             var handle = new WindowInteropHelper(window).Handle;
@@ -371,14 +378,9 @@ internal sealed class WorkspaceBar : IDisposable
             Win32.SetWindowLongPtr(
                 handle, Win32.GWL_EXSTYLE,
                 extended | (nint)Win32.WS_EX_TOOLWINDOW | (nint)Win32.WS_EX_NOACTIVATE);
+            _ = InitViewAsync(bar);
         };
 
-        _bars[output] = bar = new Bar
-        {
-            Window = window,
-            View = view,
-        };
-        _ = InitViewAsync(bar);
         return bar;
     }
 
