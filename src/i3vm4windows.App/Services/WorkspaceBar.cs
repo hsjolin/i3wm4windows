@@ -75,6 +75,11 @@ internal sealed class WorkspaceBar : IDisposable
         /// are lost, so the host buffers the state and sends on ready.</summary>
         public volatile bool Ready;
 
+        /// <summary>WebView2 can only attach once both the window and the
+        /// control have their HWNDs — that is after Show + layout, so the
+        /// init starts there, exactly once.</summary>
+        public volatile bool InitStarted;
+
         public IReadOnlyList<Chip> Chips = Array.Empty<Chip>();
         public IReadOnlyList<Tab> Tabs = Array.Empty<Tab>();
         public IReadOnlyList<Slot> Status = Array.Empty<Slot>();
@@ -156,7 +161,7 @@ internal sealed class WorkspaceBar : IDisposable
             .Select(tab => new Tab(tab.Title, tab.Active))
             .ToList();
         bar.Send();
-        Position(bar.Window, workArea);
+        Position(bar, workArea);
     }
 
     /// <summary>Closes the strips of displays that are gone.</summary>
@@ -369,8 +374,7 @@ internal sealed class WorkspaceBar : IDisposable
         };
 
         // Tool window so the shell and Alt+Tab ignore it, no-activate so
-        // it never steals focus. WebView2 needs the window handle, which
-        // only exists from SourceInitialized on — so the view starts there.
+        // it never steals focus.
         window.SourceInitialized += (_, _) =>
         {
             var handle = new WindowInteropHelper(window).Handle;
@@ -378,7 +382,6 @@ internal sealed class WorkspaceBar : IDisposable
             Win32.SetWindowLongPtr(
                 handle, Win32.GWL_EXSTYLE,
                 extended | (nint)Win32.WS_EX_TOOLWINDOW | (nint)Win32.WS_EX_NOACTIVATE);
-            _ = InitViewAsync(bar);
         };
 
         return bar;
@@ -393,10 +396,17 @@ internal sealed class WorkspaceBar : IDisposable
             var settings = bar.View.CoreWebView2.Settings;
             settings.AreDefaultContextMenusEnabled = false;
             settings.IsZoomControlEnabled = false;
-            bar.View.CoreWebView2.NavigationCompleted += (_, _) =>
+            bar.View.CoreWebView2.NavigationCompleted += (_, args) =>
             {
+                if (!args.IsSuccess)
+                {
+                    AppLog.Warn($"bar page navigation failed: {args.WebErrorStatus}");
+                    return;
+                }
+
                 bar.Ready = true;
                 bar.Send();
+                AppLog.Info("bar page loaded");
             };
             bar.View.CoreWebView2.NavigateToString(BuildHtml());
         }
@@ -411,8 +421,9 @@ internal sealed class WorkspaceBar : IDisposable
     /// work area; both are in physical pixels, so the positioning goes
     /// through Win32, never through the DIP-space of the WPF window.
     /// </summary>
-    private void Position(Window window, i3vm4windows.Core.Rect workArea)
+    private void Position(Bar bar, i3vm4windows.Core.Rect workArea)
     {
+        var window = bar.Window;
         window.UpdateLayout();
         if (!window.IsVisible)
         {
@@ -421,6 +432,14 @@ internal sealed class WorkspaceBar : IDisposable
             window.Top = -32000;
             window.Show();
             window.UpdateLayout();
+        }
+
+        // Now that the window is shown and laid out, both it and the
+        // WebView2 control have their HWNDs — safe to attach the browser.
+        if (!bar.InitStarted)
+        {
+            bar.InitStarted = true;
+            _ = InitViewAsync(bar);
         }
 
         var handle = new WindowInteropHelper(window).Handle;
