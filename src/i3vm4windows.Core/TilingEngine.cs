@@ -213,6 +213,34 @@ public sealed class TilingEngine
     /// not allowed, e.g. across the split axis, below the minimum size, or
     /// in a split with a single child.
     /// </summary>
+    /// <summary>
+    /// Resets all manual-resize weights in the workspace back to the
+    /// default, e.g. when a window moved to another display and the DPI
+    /// change resized it — that resize is not a user's.
+    /// </summary>
+    public bool ResetUserResize(Workspace workspace, long windowHandle)
+    {
+        if (Find(workspace.Root, windowHandle) is null)
+        {
+            return false;
+        }
+
+        ResetWeights(workspace.Root);
+        return true;
+    }
+
+    private static void ResetWeights(LayoutNode node)
+    {
+        node.Weight = 1;
+        if (node is SplitNode split)
+        {
+            foreach (var child in split.Children)
+            {
+                ResetWeights(child);
+            }
+        }
+    }
+
     public bool ApplyUserResize(Workspace workspace, long windowHandle, ResizeAxis axis, int requestedSize)
     {
         if (Find(workspace.Root, windowHandle) is not { } node || node.Parent is not { } parent)

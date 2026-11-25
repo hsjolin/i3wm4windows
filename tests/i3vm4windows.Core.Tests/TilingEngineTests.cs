@@ -309,6 +309,20 @@ public sealed class TilingEngineTests
         }
 
         [Fact]
+        public void ResetUserResize_RestoresTheDefaultWeight()
+        {
+            var (workspace, engine) = Create(100, 200);
+            engine.ComputeLayout(workspace, Monitor, NoGaps());
+
+            Assert.True(engine.ApplyUserResize(workspace, 100, ResizeAxis.Width, 600));
+            Assert.True(engine.ResetUserResize(workspace, 100));
+
+            var layout = engine.ComputeLayout(workspace, Monitor, NoGaps());
+            Assert.Equal(960, layout[0].Rect.Width);
+            Assert.Equal(960, layout[1].Rect.Width);
+        }
+
+        [Fact]
         public void HeightResize_VerticalSplit_WindowKeepsSizeSiblingsAdapt()
         {
             var (workspace, engine) = Create(100, 200);

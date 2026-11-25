@@ -46,6 +46,13 @@ internal sealed class WindowManager : IDisposable
     /// discovery must not re-tile them on later rescans.
     /// </summary>
     private readonly HashSet<long> _floatedByUser = new();
+    /// <summary>
+    /// Windows that just changed display. Crossing monitors with different
+    /// DPI makes the window's app resize it (WM_DPICHANGED); that new size
+    /// is not a user resize and must not be adopted as the window's layout
+    /// weight on the first re-placement.
+    /// </summary>
+    private readonly HashSet<long> _movedMonitors = new();
     private readonly HashSet<long> _hiddenByUs = new();
     /// <summary>
     /// The workspace a scratchpad window was last shown on, by window
@@ -309,13 +316,17 @@ internal sealed class WindowManager : IDisposable
                 // A window that kept a bigger size than the layout asked
                 // for (its program's minimum) would overlap its siblings;
                 // its actual extent becomes its weight so the siblings
-                // share the rest on the next pass.
-                if (actual.Width - rect.Width > RefusalTolerance &&
+                // share the rest on the next pass. A window that just
+                // changed display is excepted: with different monitor DPI
+                // its app resized it on WM_DPICHANGED, which is not a
+                // user resize.
+                var justMoved = _movedMonitors.Remove(handle);
+                if (!justMoved && actual.Width - rect.Width > RefusalTolerance &&
                     _workspaces.ApplyUserResize(handle, ResizeAxis.Width, actual.Width))
                 {
                     resized = true;
                 }
-                else if (actual.Height - rect.Height > RefusalTolerance &&
+                else if (!justMoved && actual.Height - rect.Height > RefusalTolerance &&
                     _workspaces.ApplyUserResize(handle, ResizeAxis.Height, actual.Height))
                 {
                     resized = true;
@@ -780,6 +791,14 @@ internal sealed class WindowManager : IDisposable
         var workArea = target.WorkArea;
         var movedWindows = _workspaces.TryGet(move.MovedIndex)?.WindowHandles ??
             Array.Empty<long>();
+        foreach (var handle in movedWindows)
+        {
+            // The workspace changed display: a DPI-driven resize of its
+            // windows is not a user resize.
+            _workspaces.ResetUserResize(handle);
+            _movedMonitors.Add(handle);
+        }
+
         foreach (var handle in movedWindows)
         {
             var hwnd = new IntPtr(handle);
@@ -1411,6 +1430,8 @@ internal sealed class WindowManager : IDisposable
             _workspaces.RemoveWindow(handle);
             _workspaces.AddWindow(handle, device);
             _placements.Remove(handle);
+            _workspaces.ResetUserResize(handle);
+            _movedMonitors.Add(handle);
 
             // The window joined an active workspace; it must not stay hidden.
             if (!Win32.IsWindowVisible(hwnd))

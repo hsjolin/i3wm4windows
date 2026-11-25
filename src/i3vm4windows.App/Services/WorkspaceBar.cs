@@ -481,7 +481,9 @@ internal sealed class WorkspaceBar : IDisposable
     {
         try
         {
-            using var message = System.Text.Json.JsonDocument.Parse(args.TryGetWebMessageAsString());
+            // WebMessageAsJson: the page posts objects, and
+            // TryGetWebMessageAsString throws E_BOUNDS for those.
+            using var message = System.Text.Json.JsonDocument.Parse(args.WebMessageAsJson);
             if (message.RootElement.TryGetProperty("click", out var click) &&
                 click.ValueKind == System.Text.Json.JsonValueKind.Number)
             {

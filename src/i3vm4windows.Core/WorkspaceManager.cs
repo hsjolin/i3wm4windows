@@ -219,6 +219,12 @@ public sealed class WorkspaceManager
         FindOwner(windowHandle) is { } workspace &&
         _engine.ApplyUserResize(workspace, windowHandle, axis, requestedSize);
 
+    /// <summary>Resets a window's manual-resize weight, e.g. after it
+    /// moved to another display.</summary>
+    public bool ResetUserResize(long windowHandle) =>
+        FindOwner(windowHandle) is { } workspace &&
+        _engine.ResetUserResize(workspace, windowHandle);
+
     /// <summary>Removes the window from whichever workspace owns it.</summary>
     public bool RemoveWindow(long windowHandle)
     {
