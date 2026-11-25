@@ -131,6 +131,9 @@ launch command in a binding), but it also runs when the configuration is
 reloaded: the tray menu's "Reload configuration" restarts the app with
 `--ignore-exec`, so plain `exec` runs only on a real start (or on demand
 from a binding), while `exec_always` runs on every start and reload.
+Only one instance runs at a time (a global mutex); a second start exits
+immediately, and the old instance exits for real on reload (WebView2's
+browser process would otherwise keep it alive with its tray icon).
 
 Quake-style toggling (a terminal that shows and hides from any
 workspace) binds `[class="..." title="..."] scratchpad show`: a hidden

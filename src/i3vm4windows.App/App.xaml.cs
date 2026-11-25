@@ -13,6 +13,7 @@ namespace i3vm4windows.App;
 
 public partial class App : System.Windows.Application
 {
+    private Mutex? _singleInstance;
     private readonly Dictionary<int, Binding> _bindings = new();
     /// <summary>The bindings of each mode except the default one, by mode
     /// name; the hook activates them while the mode is active.</summary>
@@ -39,6 +40,16 @@ public partial class App : System.Windows.Application
 
         base.OnStartup(e);
         AppLog.Session();
+
+        // One instance only: a window manager running twice would fight
+        // over the same hooks, windows and tray icon.
+        _singleInstance = new Mutex(true, @"Global\i3vm4windows.SingleInstance", out var createdNew);
+        if (!createdNew)
+        {
+            AppLog.Warn("another instance is already running; exiting");
+            Environment.Exit(0);
+            return;
+        }
 
         _configPath = e.Args.FirstOrDefault(a => !a.StartsWith('-'))
             ?? Path.Combine(
@@ -105,8 +116,20 @@ public partial class App : System.Windows.Application
         _dragger?.Dispose();
         _hotkeyHost?.Dispose();
         _windowManager?.Dispose();
+        try
+        {
+            _singleInstance?.ReleaseMutex();
+        }
+        catch (ApplicationException)
+        {
+            // Already released.
+        }
 
         base.OnExit(e);
+
+        // The WebView2 browser process outlives Application.Shutdown, so
+        // without this a reloaded instance would linger with its tray icon.
+        Environment.Exit(0);
     }
 
     /// <summary>

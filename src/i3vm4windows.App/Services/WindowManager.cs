@@ -967,6 +967,16 @@ internal sealed class WindowManager : IDisposable
                     !_hiddenByUs.Contains(handle) &&
                     !Win32.IsIconic(hwnd))
                 {
+                    // A closing window is often hidden before it is
+                    // destroyed; note the lost focus now, or the destroy
+                    // event finds it already unmanaged and the focus is
+                    // never handed back.
+                    if (_workspaces.FindOwner(handle)?.FocusedWindowHandle == handle)
+                    {
+                        _deadForegroundHandle = handle;
+                        _deadForegroundWorkspace = _workspaces.FindOwner(handle)?.Index;
+                    }
+
                     UnmanageWindow(handle);
                 }
 
