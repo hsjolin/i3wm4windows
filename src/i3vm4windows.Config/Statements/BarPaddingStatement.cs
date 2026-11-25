@@ -2,10 +2,11 @@ namespace i3vm4windows.Config.Statements;
 
 /// <summary>
 /// padding x: at the bar block's top level, a gap of x characters
-/// between every status item; inside an item { ... } block, a spacer of
-/// x characters between the item's parts. Padding is soft: items keep
-/// the widest cell they have shown, so one item growing does not move
-/// the others.
+/// between every status item — half on each side of the separator, or
+/// the whole gap when no separator is set; unset means 1. Inside an
+/// item { ... } block, a spacer of x characters between the item's
+/// parts. Padding is soft: items keep the widest cell they have shown,
+/// so one item growing does not move the others.
 /// </summary>
 public sealed class BarPaddingStatement : BarDirectiveStatement
 {

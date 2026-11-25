@@ -835,6 +835,7 @@ public class I3ConfigParserTests
         Assert.False(bar.Date);
         Assert.Empty(bar.Commands);
         Assert.Empty(bar.BarItems);
+        Assert.Equal(1, bar.ItemPadding);
     }
 
     [Fact]

@@ -283,24 +283,23 @@ internal sealed class WorkspaceBar : IDisposable
                 slots.Add(new Slot(text.ToString(), items[i].OnClick is not null));
                 clicks.Add(items[i].OnClick);
 
-                // The gap between items: the separator with a space on
-                // each side, then the top-level padding — but never after
-                // a padding-only item, which is itself the spacer.
-                var paddingOnly =
-                    items[i].Parts.Count == 1 && items[i].Parts[0].Kind == BarItemKind.Padding;
-                if (i < items.Count - 1 && !paddingOnly)
+                // The gap between items: half the padding, the separator,
+                // half the padding — or just the padding when no separator
+                // is set. Non-breaking spaces: plain spaces collapse at the
+                // start/end of a cell in HTML, nbsp does not.
+                if (i < items.Count - 1)
                 {
-                    // Non-breaking spaces: plain spaces collapse at the
-                    // start/end of a cell in HTML, nbsp does not.
+                    var padding = _config.ItemPadding;
                     var gap = new System.Text.StringBuilder();
                     if (_config.Separator.Length > 0)
                     {
-                        gap.Append('\u00A0').Append(_config.Separator).Append('\u00A0');
+                        gap.Append('\u00A0', padding / 2);
+                        gap.Append(_config.Separator);
+                        gap.Append('\u00A0', padding - padding / 2);
                     }
-
-                    if (_config.ItemPadding > 0)
+                    else if (padding > 0)
                     {
-                        gap.Append('\u00A0', _config.ItemPadding);
+                        gap.Append('\u00A0', padding);
                     }
 
                     if (gap.Length > 0)

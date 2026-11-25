@@ -143,8 +143,9 @@ public sealed class BarSettings
     public string Separator = "";
 
     /// <summary>The top-level padding directive: blank space of this
-    /// many characters between the status items.</summary>
-    public int ItemPadding;
+    /// many characters between the status items, half on each side of
+    /// the separator. Null until set; the bar defaults it to 1.</summary>
+    public int? ItemPadding;
 
     /// <summary>Whether an item { ... } block is open, and the parts and
     /// onclick command collected for it so far.</summary>
@@ -182,5 +183,5 @@ public sealed class BarSettings
     }
 
     public BarConfig ToConfig() => new(
-        Position, Height, Clock, Date, Commands, Items, Font, FontSize ?? 13, Separator, ItemPadding);
+        Position, Height, Clock, Date, Commands, Items, Font, FontSize ?? 13, Separator, ItemPadding ?? 1);
 }

@@ -123,7 +123,8 @@ public sealed record BarItem
 /// 30 pixels tall, no status output.
 /// </summary>
 /// <param name="ItemPadding">Blank padding of this many characters
-/// between the status items (the bar block's top-level padding).</param>
+/// between the status items (the bar block's top-level padding,
+/// default 1): half on each side of the separator.</param>
 public sealed record BarConfig(
     string Position = "top",
     int Height = 30,
@@ -134,7 +135,7 @@ public sealed record BarConfig(
     string? Font = null,
     double FontSize = 13,
     string Separator = "",
-    int ItemPadding = 0)
+    int ItemPadding = 1)
 {
     public IReadOnlyList<string> Commands => StatusCommands ?? Array.Empty<string>();
 

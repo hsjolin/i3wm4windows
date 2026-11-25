@@ -259,7 +259,9 @@ bar {
   separator |           # drawn between the status items
   clock yes             # HH:mm
   date no               # yyyy-MM-dd
-  padding 10            # blank gap of 10 characters between every item
+  padding 10            # gap between every item: padding/2, separator,
+                        # padding/2 — just the padding when no separator
+                        # is set; defaults to 1
   # A bare directive is one status item on its own:
   cpu                   # busy percentage
   memory                # used physical memory percentage (ram too)
