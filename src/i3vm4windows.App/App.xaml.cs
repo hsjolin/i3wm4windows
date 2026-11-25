@@ -42,11 +42,29 @@ public partial class App : System.Windows.Application
         AppLog.Session();
 
         // One instance only: a window manager running twice would fight
-        // over the same hooks, windows and tray icon.
-        _singleInstance = new Mutex(true, @"Global\i3vm4windows.SingleInstance", out var createdNew);
+        // over the same hooks, windows and tray icon. A reload restarts
+        // the app, and the new process starts before the old one has
+        // exited, so a second start waits for the mutex — released in
+        // OnExit — instead of giving up at once.
+        _singleInstance = new Mutex(false, @"Global\i3vm4windows.SingleInstance", out var createdNew);
         if (!createdNew)
         {
-            AppLog.Warn("another instance is already running; exiting");
+            AppLog.Info("another instance is running; waiting for it to exit");
+            try
+            {
+                createdNew = _singleInstance.WaitOne(TimeSpan.FromSeconds(15));
+            }
+            catch (AbandonedMutexException)
+            {
+                // The previous instance died without releasing; the
+                // mutex is ours now.
+                createdNew = true;
+            }
+        }
+
+        if (!createdNew)
+        {
+            AppLog.Warn("another instance is still running; exiting");
             Environment.Exit(0);
             return;
         }
