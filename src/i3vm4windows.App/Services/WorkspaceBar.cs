@@ -290,7 +290,9 @@ internal sealed class WorkspaceBar : IDisposable
                     items[i].Parts.Count == 1 && items[i].Parts[0].Kind == BarItemKind.Padding;
                 if (i < items.Count - 1 && !paddingOnly && _config.Separator.Length > 0)
                 {
-                    slots.Add(new Slot(" " + _config.Separator + " ", false));
+                    // Non-breaking spaces: plain spaces collapse at the
+                    // start/end of a cell in HTML, nbsp does not.
+                    slots.Add(new Slot("\u00A0" + _config.Separator + "\u00A0", false));
                     clicks.Add(null);
                 }
             }
