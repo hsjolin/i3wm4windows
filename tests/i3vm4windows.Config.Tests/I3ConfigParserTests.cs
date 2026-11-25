@@ -811,10 +811,10 @@ public class I3ConfigParserTests
         Assert.Equal(40, bar.Height);
         Assert.True(bar.Clock);
         Assert.Equal(
-            new[] { BarItemKind.Print, BarItemKind.Padding, BarItemKind.Cpu, BarItemKind.Ram, BarItemKind.Battery, BarItemKind.Command },
+            new[] { BarItemKind.Print, BarItemKind.Cpu, BarItemKind.Ram, BarItemKind.Battery, BarItemKind.Command },
             bar.BarItems.Select(i => i.Kind).ToArray());
         Assert.Equal("CPU", bar.BarItems[0].Text);
-        Assert.Equal(2, bar.BarItems[1].Padding);
+        Assert.Equal(2, bar.ItemPadding);
         Assert.False(bar.Date);
         var command = Assert.Single(bar.Commands);
         Assert.Equal("powershell -c \"Get-Random\"", command);
@@ -876,12 +876,10 @@ public class I3ConfigParserTests
 
         var bar = config.Bar!;
         Assert.Equal("|", bar.Separator);
-        Assert.Equal(3, bar.BarItems.Count);
+        Assert.Equal(1, bar.ItemPadding);
+        Assert.Equal(2, bar.BarItems.Count);
 
-        Assert.Equal(BarItemKind.Padding, bar.BarItems[0].Kind);
-        Assert.Equal(1, bar.BarItems[0].Padding);
-
-        var cpu = bar.BarItems[1];
+        var cpu = bar.BarItems[0];
         Assert.Equal(
             new[] { BarItemKind.Print, BarItemKind.Padding, BarItemKind.Cpu, BarItemKind.Print },
             cpu.Parts.Select(p => p.Kind).ToArray());
@@ -890,7 +888,7 @@ public class I3ConfigParserTests
         Assert.Equal("%", cpu.Parts[3].Text);
         Assert.Equal("taskmgr", cpu.OnClick);
 
-        var volume = bar.BarItems[2];
+        var volume = bar.BarItems[1];
         Assert.Equal(BarItemKind.Print, volume.Parts[0].Kind);
         Assert.Equal("🔊", volume.Parts[0].Text);
         Assert.Equal(BarItemKind.Command, volume.Parts[1].Kind);

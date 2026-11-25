@@ -306,15 +306,55 @@ public partial class App : System.Windows.Application
         binding.Run?.Invoke(_runtime!, binding.Rule);
     }
 
+    /// <summary>When the log was last opened, to swallow a double-fired
+    /// menu click.</summary>
+    private static DateTime _logOpenedAt = DateTime.MinValue;
+
+    /// <summary>
+    /// Opens the log in Notepad — reusing a Notepad window that already
+    /// shows it, so repeated clicks do not pile up windows.
+    /// </summary>
+    private static void OpenLog()
+    {
+        AppLog.Info("tray: open log");
+        if ((DateTime.Now - _logOpenedAt).TotalSeconds < 2)
+        {
+            AppLog.Info("tray: open log again within 2 s; ignoring");
+            return;
+        }
+
+        _logOpenedAt = DateTime.Now;
+        foreach (var process in Process.GetProcessesByName("notepad"))
+        {
+            try
+            {
+                if (process.MainWindowHandle != IntPtr.Zero &&
+                    process.MainWindowTitle.Contains("log.txt", StringComparison.OrdinalIgnoreCase))
+                {
+                    AppLog.Info("tray: log already open in notepad; activating it");
+                    Win32.SetForegroundWindow(process.MainWindowHandle);
+                    return;
+                }
+            }
+            catch
+            {
+                // A Notepad window that is closing or has none yet.
+            }
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "notepad.exe",
+            Arguments = $"\"{AppLog.Path}\"",
+            UseShellExecute = true,
+        });
+    }
+
     private System.Windows.Forms.NotifyIcon CreateTrayIcon()
     {
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add("Reload configuration (no exec)", null, (_, _) => RestartApplication());
-        menu.Items.Add("Open log", null, (_, _) => Process.Start(new ProcessStartInfo
-        {
-            FileName = AppLog.Path,
-            UseShellExecute = true,
-        }));
+        menu.Items.Add("Open log", null, (_, _) => OpenLog());
         menu.Items.Add("Exit i3vm4windows", null, (_, _) => Shutdown());
 
         var icon = new System.Windows.Forms.NotifyIcon

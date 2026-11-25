@@ -122,6 +122,8 @@ public sealed record BarItem
 /// file. The defaults describe the plain bar: top of every display,
 /// 30 pixels tall, no status output.
 /// </summary>
+/// <param name="ItemPadding">Blank padding of this many characters
+/// between the status items (the bar block's top-level padding).</param>
 public sealed record BarConfig(
     string Position = "top",
     int Height = 30,
@@ -131,7 +133,8 @@ public sealed record BarConfig(
     IReadOnlyList<BarItem>? Items = null,
     string? Font = null,
     double FontSize = 13,
-    string Separator = "")
+    string Separator = "",
+    int ItemPadding = 0)
 {
     public IReadOnlyList<string> Commands => StatusCommands ?? Array.Empty<string>();
 

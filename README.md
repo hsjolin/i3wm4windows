@@ -259,7 +259,7 @@ bar {
   separator |           # drawn between the status items
   clock yes             # HH:mm
   date no               # yyyy-MM-dd
-  padding 1             # a spacer of one character
+  padding 10            # blank gap of 10 characters between every item
   # A bare directive is one status item on its own:
   cpu                   # busy percentage
   memory                # used physical memory percentage (ram too)
@@ -269,8 +269,9 @@ bar {
   # every couple of seconds; they run through cmd.exe, so pipes and
   # scripts work.
   exec "powershell -c \"[math]::Round((Get-Counter '\\Processor(_Total)\\% Processor Time').CounterSamples.CookedValue)\""
-  # An item { ... } block groups several directives into one item, and
-  # onclick { exec ... } runs a command when the item is clicked:
+  # An item { ... } block groups several directives into one item —
+  # padding inside it spaces the item's parts — and onclick { exec ... }
+  # runs a command when the item is clicked:
   item {
     print CPU
     padding 1
