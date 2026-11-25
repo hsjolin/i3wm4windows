@@ -282,9 +282,15 @@ internal sealed class WorkspaceBar : IDisposable
 
                 slots.Add(new Slot(text.ToString(), items[i].OnClick is not null));
                 clicks.Add(items[i].OnClick);
-                if (i < items.Count - 1 && _config.Separator.Length > 0)
+
+                // The separator goes between items, with a space on each
+                // side — but never after a padding-only item, so a leading
+                // `padding 1` does not produce a leading separator.
+                var paddingOnly =
+                    items[i].Parts.Count == 1 && items[i].Parts[0].Kind == BarItemKind.Padding;
+                if (i < items.Count - 1 && !paddingOnly && _config.Separator.Length > 0)
                 {
-                    slots.Add(new Slot(_config.Separator, false));
+                    slots.Add(new Slot(" " + _config.Separator + " ", false));
                     clicks.Add(null);
                 }
             }
