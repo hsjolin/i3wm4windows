@@ -16,6 +16,6 @@ public sealed class BarPrintStatement : BarDirectiveStatement
             return;
         }
 
-        context.Bar.Items.Add(new BarItem(BarItemKind.Print, string.Join(' ', parameters)));
+        context.Bar.AddPart(BarItemKind.Print, string.Join(' ', parameters));
     }
 }

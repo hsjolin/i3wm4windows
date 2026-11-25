@@ -68,7 +68,7 @@ public partial class App : System.Windows.Application
 
         // The statements carry their own runtime behavior; this is what
         // they execute it against.
-        _runtime = new ConfigRuntime(_windowManager, name => SetMode(name));
+        _runtime = new ConfigRuntime(_windowManager, name => SetMode(name), RestartApplication);
 
         // Win + mouse drag moves and resizes windows; only this app can
         // see the Win key, so it owns the whole gesture.

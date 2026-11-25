@@ -55,7 +55,7 @@ interface.
 | `layout tabbed` | Present the focused window's split as tabs: one window shows at a time, focus left / right switches between them |
 | `layout default` | Return the split to normal tiling |
 | `kill` | Close focused window |
-| `reload` | Rescan windows and re-apply layout |
+| `reload` | Restart the app, reloading the configuration — same as the tray menu's "Reload configuration": `exec` autostarts do not run again, `exec_always` do |
 | `move workspace to output next` | Move the active workspace to the next monitor |
 | `exec [--no-startup-id] <program> [args]` | Start a program, e.g. a rofi-style launcher: `bindsym $mod+Space exec "C:\path\launcher.exe"` — a quoted path keeps its spaces |
 | `exec [--no-startup-id] <program> [args]` as its own directive | i3's autostart: start the program when the app starts with this configuration |
@@ -252,14 +252,31 @@ The `bar { ... }` block configures it:
 bar {
   position top          # or bottom
   height 30
+  font "Segoe UI, Segoe UI Emoji" 13   # the page renders color emoji
+  separator |           # drawn between the status items
   clock yes             # HH:mm
   date no               # yyyy-MM-dd
-  cpu yes               # busy percentage
-  memory yes            # used physical memory percentage
+  padding 1             # a spacer of one character
+  # A bare directive is one status item on its own:
+  cpu                   # busy percentage
+  memory                # used physical memory percentage (ram too)
+  battery               # charge percentage
+  print CPU             # literal text
   # Commands whose first line of output shows in the bar, refreshed
   # every couple of seconds; they run through cmd.exe, so pipes and
   # scripts work.
   exec "powershell -c \"[math]::Round((Get-Counter '\\Processor(_Total)\\% Processor Time').CounterSamples.CookedValue)\""
+  # An item { ... } block groups several directives into one item, and
+  # onclick { exec ... } runs a command when the item is clicked:
+  item {
+    print CPU
+    padding 1
+    cpu
+    print %
+    onclick {
+      exec taskmgr
+    }
+  }
 }
 ```
 

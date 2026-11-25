@@ -25,6 +25,19 @@ public class ExecStatement : CommandStatement
         if (context.InBar)
         {
             var commandText = string.Join(' ', rest);
+            if (context.Bar.InOnClick)
+            {
+                // The onclick block's command: run when the item is clicked.
+                context.Bar.ItemOnClick = commandText;
+                return;
+            }
+
+            if (context.Bar.InItem)
+            {
+                context.Bar.AddPart(BarItemKind.Command, commandText);
+                return;
+            }
+
             context.Bar.Commands.Add(commandText);
             context.Bar.Items.Add(new BarItem(BarItemKind.Command, commandText));
             return;

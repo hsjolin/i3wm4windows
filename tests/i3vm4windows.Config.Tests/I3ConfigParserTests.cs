@@ -85,7 +85,7 @@ public class I3ConfigParserTests
     [InlineData("split toggle", ConfigAction.ToggleOrientation)]
     [InlineData("layout toggle split", ConfigAction.ToggleOrientation)]
     [InlineData("floating toggle", ConfigAction.FloatingToggle)]
-    [InlineData("reload", ConfigAction.Refresh)]
+    [InlineData("reload", ConfigAction.Restart)]
     [InlineData("move workspace to output next", ConfigAction.MoveWorkspaceToNextMonitor)]
     public void Known_commands_map_to_actions(string command, ConfigAction expected)
     {
@@ -119,7 +119,7 @@ public class I3ConfigParserTests
             """);
 
         var binding = Assert.Single(config.Bindings);
-        Assert.Equal(ConfigAction.Refresh, binding.Action);
+        Assert.Equal(ConfigAction.Restart, binding.Action);
     }
 
     [Fact]
@@ -600,6 +600,7 @@ public class I3ConfigParserTests
         public void SetSplit() { }
         public void CloseFocused() { }
         public void Refresh() { }
+        public void Restart() { }
         public void ToggleFloating() { }
         public void ToggleScratchpad(WindowRule rule) { }
         public void ResizeFocused(ResizeAxis axis, int delta) { }
@@ -834,6 +835,104 @@ public class I3ConfigParserTests
         Assert.False(bar.Date);
         Assert.Empty(bar.Commands);
         Assert.Empty(bar.BarItems);
+    }
+
+    [Fact]
+    public void Bar_separator_sets_the_separator_text()
+    {
+        var config = I3ConfigParser.Parse("""
+            bar {
+                separator |
+                print hi
+            }
+            """);
+
+        Assert.Equal("|", config.Bar!.Separator);
+        Assert.Empty(config.Warnings);
+    }
+
+    [Fact]
+    public void Bar_item_block_collects_parts_and_onclick_into_one_item()
+    {
+        var config = I3ConfigParser.Parse("""
+            bar {
+                separator |
+                padding 1
+                item {
+                    print CPU
+                    padding 1
+                    cpu
+                    print %
+                    onclick {
+                        exec taskmgr
+                    }
+                }
+                item {
+                    print 🔊
+                    exec volume.exe
+                }
+            }
+            """);
+
+        var bar = config.Bar!;
+        Assert.Equal("|", bar.Separator);
+        Assert.Equal(3, bar.BarItems.Count);
+
+        Assert.Equal(BarItemKind.Padding, bar.BarItems[0].Kind);
+        Assert.Equal(1, bar.BarItems[0].Padding);
+
+        var cpu = bar.BarItems[1];
+        Assert.Equal(
+            new[] { BarItemKind.Print, BarItemKind.Padding, BarItemKind.Cpu, BarItemKind.Print },
+            cpu.Parts.Select(p => p.Kind).ToArray());
+        Assert.Equal("CPU", cpu.Parts[0].Text);
+        Assert.Equal(1, cpu.Parts[1].Padding);
+        Assert.Equal("%", cpu.Parts[3].Text);
+        Assert.Equal("taskmgr", cpu.OnClick);
+
+        var volume = bar.BarItems[2];
+        Assert.Equal(BarItemKind.Print, volume.Parts[0].Kind);
+        Assert.Equal("🔊", volume.Parts[0].Text);
+        Assert.Equal(BarItemKind.Command, volume.Parts[1].Kind);
+        Assert.Equal("volume.exe", volume.Parts[1].Text);
+        Assert.Null(volume.OnClick);
+        Assert.Empty(config.Warnings);
+    }
+
+    [Fact]
+    public void Bar_onclick_outside_an_item_block_warns()
+    {
+        var config = I3ConfigParser.Parse("""
+            bar {
+                onclick {
+                    exec x
+                }
+            }
+            """);
+
+        // The rejected onclick { leaves its } with nothing to close.
+        Assert.Equal(2, config.Warnings.Count);
+        Assert.Contains("onclick", config.Warnings[0]);
+    }
+
+    [Fact]
+    public void Bar_item_block_rejects_nesting()
+    {
+        var config = I3ConfigParser.Parse("""
+            bar {
+                item {
+                    item {
+                        print no
+                    }
+                }
+            }
+            """);
+
+        // The rejected inner item { leaves its } with nothing to close.
+        Assert.Equal(2, config.Warnings.Count);
+        Assert.Contains("Unsupported item directive", config.Warnings[0]);
+        var item = Assert.Single(config.Bar!.BarItems);
+        Assert.Equal("no", Assert.Single(item.Parts).Text);
     }
 
     [Fact]

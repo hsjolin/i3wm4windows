@@ -1,6 +1,8 @@
 namespace i3vm4windows.Config.Statements;
 
-/// <summary>reload: rescans the windows and re-applies the layout.</summary>
+/// <summary>reload: restarts the whole application with the
+/// configuration reloaded, like the tray menu's "Reload configuration"
+/// — exec autostarts do not run again, exec_always do.</summary>
 public sealed class ReloadStatement : CommandStatement
 {
     public override string Name => "reload";
@@ -10,8 +12,8 @@ public sealed class ReloadStatement : CommandStatement
         if (parameters.Count == 0)
         {
             context.Intent = new CommandIntent(
-                Action: ConfigAction.Refresh,
-                Run: (runtime, _) => runtime.Refresh());
+                Action: ConfigAction.Restart,
+                Run: (runtime, _) => runtime.Restart());
         }
     }
 }

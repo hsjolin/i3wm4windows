@@ -26,6 +26,6 @@ public sealed class BarValueStatement : BarDirectiveStatement
             return;
         }
 
-        context.Bar.Items.Add(new BarItem(_kind));
+        context.Bar.AddPart(_kind);
     }
 }

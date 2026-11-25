@@ -138,6 +138,45 @@ public sealed class BarSettings
     public string? Font;
     public double? FontSize;
 
+    /// <summary>The separator text drawn between status items
+    /// (separator |); empty draws none.</summary>
+    public string Separator = "";
+
+    /// <summary>Whether an item { ... } block is open, and the parts and
+    /// onclick command collected for it so far.</summary>
+    public bool InItem;
+    public bool InOnClick;
+    public List<BarPart> ItemParts = new();
+    public string? ItemOnClick;
+
+    /// <summary>Adds one part where it belongs: to the open item block,
+    /// or as a standalone item when no item block is open.</summary>
+    public void AddPart(BarItemKind kind, string text = "", int padding = 0)
+    {
+        if (InItem)
+        {
+            ItemParts.Add(new BarPart(kind, text, padding));
+        }
+        else
+        {
+            Items.Add(new BarItem(kind, text, padding));
+        }
+    }
+
+    /// <summary>Closes the open item block: the collected parts (and
+    /// onclick command, if any) become one item.</summary>
+    public void CloseItem()
+    {
+        if (ItemParts.Count > 0 || ItemOnClick is not null)
+        {
+            Items.Add(new BarItem(ItemParts.ToList(), ItemOnClick));
+        }
+
+        ItemParts.Clear();
+        ItemOnClick = null;
+        InItem = false;
+    }
+
     public BarConfig ToConfig() => new(
-        Position, Height, Clock, Date, Commands, Items, Font, FontSize ?? 13);
+        Position, Height, Clock, Date, Commands, Items, Font, FontSize ?? 13, Separator);
 }

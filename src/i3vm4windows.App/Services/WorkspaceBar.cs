@@ -87,6 +87,10 @@ internal sealed class WorkspaceBar : IDisposable
         public IReadOnlyList<Tab> Tabs = Array.Empty<Tab>();
         public IReadOnlyList<Slot> Status = Array.Empty<Slot>();
 
+        /// <summary>The onclick command of each status cell, by cell
+        /// index; null where the cell is not clickable.</summary>
+        public IReadOnlyList<string?> StatusClicks = Array.Empty<string?>();
+
         public void Send()
         {
             if (!Ready)
@@ -114,9 +118,10 @@ internal sealed class WorkspaceBar : IDisposable
 
     private sealed record Tab(string Title, bool Active);
 
-    /// <summary>One status cell: either text, or a padding spacer of
-    /// <see cref="Padding"/> characters.</summary>
-    private sealed record Slot(string? Text, int Padding);
+    /// <summary>One status cell: its text (a padding part renders as
+    /// non-breaking spaces), and whether clicking it runs its onclick
+    /// command.</summary>
+    private sealed record Slot(string Text, bool Clickable);
 
     public WorkspaceBar(BarConfig config)
     {
@@ -223,45 +228,71 @@ internal sealed class WorkspaceBar : IDisposable
 
             items.AddRange(_config.BarItems);
 
-            // One value per item index; commands run in parallel.
-            var values = new Dictionary<int, string>(items.Count);
-            var commandTasks = new List<(int Index, Task<string> Output)>();
+            // One output per command part (item index, part index);
+            // commands run in parallel.
+            var commandTasks = new List<(int Item, int Part, Task<string> Output)>();
             for (var i = 0; i < items.Count; i++)
             {
-                switch (items[i].Kind)
+                for (var p = 0; p < items[i].Parts.Count; p++)
                 {
-                    case BarItemKind.Cpu:
-                        values[i] = CpuPercent()?.ToString(CultureInfo.InvariantCulture) ?? "";
-                        break;
-                    case BarItemKind.Ram:
-                        values[i] = MemoryPercent()?.ToString(CultureInfo.InvariantCulture) ?? "";
-                        break;
-                    case BarItemKind.Battery:
-                        values[i] = BatteryPercent()?.ToString(CultureInfo.InvariantCulture) ?? "";
-                        break;
-                    case BarItemKind.Command:
-                        commandTasks.Add((i, RunCommand(items[i].Text)));
-                        break;
-                    default:
-                        values[i] = items[i].Text;
-                        break;
+                    if (items[i].Parts[p].Kind == BarItemKind.Command)
+                    {
+                        commandTasks.Add((i, p, RunCommand(items[i].Parts[p].Text)));
+                    }
                 }
             }
 
-            foreach (var (index, output) in commandTasks)
+            var outputs = new Dictionary<(int Item, int Part), string>();
+            foreach (var (item, part, output) in commandTasks)
             {
-                values[index] = await output;
+                outputs[(item, part)] = await output;
             }
 
-            var slots = items
-                .Select((item, i) => item.Kind == BarItemKind.Padding
-                    ? new Slot(null, Math.Max(1, item.Padding))
-                    : new Slot(values.TryGetValue(i, out var value) ? value : "", 0))
-                .ToList();
+            // One cell per item — its parts joined — with the separator
+            // between items, and the onclick command remembered per cell.
+            var slots = new List<Slot>();
+            var clicks = new List<string?>();
+            for (var i = 0; i < items.Count; i++)
+            {
+                var text = new System.Text.StringBuilder();
+                foreach (var (part, p) in items[i].Parts.Select((part, p) => (part, p)))
+                {
+                    switch (part.Kind)
+                    {
+                        case BarItemKind.Cpu:
+                            text.Append(CpuPercent()?.ToString(CultureInfo.InvariantCulture) ?? "");
+                            break;
+                        case BarItemKind.Ram:
+                            text.Append(MemoryPercent()?.ToString(CultureInfo.InvariantCulture) ?? "");
+                            break;
+                        case BarItemKind.Battery:
+                            text.Append(BatteryPercent()?.ToString(CultureInfo.InvariantCulture) ?? "");
+                            break;
+                        case BarItemKind.Command:
+                            text.Append(outputs.TryGetValue((i, p), out var output) ? output : "");
+                            break;
+                        case BarItemKind.Padding:
+                            text.Append('\u00A0', Math.Max(1, part.Padding));
+                            break;
+                        default:
+                            text.Append(part.Text);
+                            break;
+                    }
+                }
+
+                slots.Add(new Slot(text.ToString(), items[i].OnClick is not null));
+                clicks.Add(items[i].OnClick);
+                if (i < items.Count - 1 && _config.Separator.Length > 0)
+                {
+                    slots.Add(new Slot(_config.Separator, false));
+                    clicks.Add(null);
+                }
+            }
 
             foreach (var bar in _bars.Values)
             {
                 bar.Status = slots;
+                bar.StatusClicks = clicks;
                 bar.Send();
             }
         }
@@ -415,6 +446,7 @@ internal sealed class WorkspaceBar : IDisposable
             settings.IsZoomControlEnabled = false;
             bar.View.CoreWebView2.ProcessFailed += (_, args) =>
                 AppLog.Warn($"bar browser process failed: {args.ProcessFailedKind}, exit={args.ExitCode}, reason={args.Reason}");
+            bar.View.CoreWebView2.WebMessageReceived += (_, args) => OnBarMessage(bar, args);
             bar.View.CoreWebView2.NavigationCompleted += (_, args) =>
             {
                 if (!args.IsSuccess)
@@ -432,6 +464,33 @@ internal sealed class WorkspaceBar : IDisposable
         catch (Exception error)
         {
             AppLog.Warn($"bar webview2 init failed: {error.Message}");
+        }
+    }
+
+    /// <summary>A click on a status cell: the page posts {click: index};
+    /// the cell's onclick command runs.</summary>
+    private static void OnBarMessage(Bar bar, CoreWebView2WebMessageReceivedEventArgs args)
+    {
+        try
+        {
+            using var message = System.Text.Json.JsonDocument.Parse(args.TryGetWebMessageAsString());
+            if (message.RootElement.TryGetProperty("click", out var click) &&
+                click.ValueKind == System.Text.Json.JsonValueKind.Number)
+            {
+                var index = click.GetInt32();
+                var command = index >= 0 && index < bar.StatusClicks.Count
+                    ? bar.StatusClicks[index]
+                    : null;
+                if (command is not null)
+                {
+                    AppLog.Info($"bar click {index}: {command}");
+                    Launcher.Start(command);
+                }
+            }
+        }
+        catch (Exception error)
+        {
+            AppLog.Warn($"bar message failed: {error.Message}");
         }
     }
 
@@ -513,7 +572,6 @@ internal sealed class WorkspaceBar : IDisposable
             const tabsEl = document.getElementById('tabs');
             const statusEl = document.getElementById('status');
             const slotWidths = [];
-            let charWidth = 0;
 
             function cell(className, text) {
               const d = document.createElement('div');
@@ -522,30 +580,23 @@ internal sealed class WorkspaceBar : IDisposable
               return d;
             }
 
-            function measureChar() {
-              const ctx = document.createElement('canvas').getContext('2d');
-              ctx.font = '{{size}}px {{family}}';
-              charWidth = ctx.measureText('0').width || {{size}} * 0.6;
-            }
-
             function render(m) {
               chipsEl.replaceChildren(...m.chips.map(c => cell('chip' + (c.active ? ' active' : ''), c.label)));
               tabsEl.replaceChildren(...m.tabs.map(t => cell('tab' + (t.active ? ' active' : ''), t.title)));
-              statusEl.replaceChildren(...m.status.map(s => cell('slot', s.text == null ? '' : s.text)));
+              statusEl.replaceChildren(...m.status.map(s => cell('slot', s.text)));
               m.status.forEach((s, i) => {
                 const d = statusEl.children[i];
-                if (s.text == null) {
-                  d.style.width = (Math.max(1, s.padding) * charWidth) + 'px';
-                } else {
-                  const w = d.offsetWidth;
-                  if (w > (slotWidths[i] || 0)) { slotWidths[i] = w; }
-                  d.style.width = slotWidths[i] + 'px';
+                if (s.clickable) {
+                  d.style.cursor = 'pointer';
+                  d.addEventListener('click', () => window.chrome.webview.postMessage({ click: i }));
                 }
+
+                const w = d.offsetWidth;
+                if (w > (slotWidths[i] || 0)) { slotWidths[i] = w; }
+                d.style.width = slotWidths[i] + 'px';
               });
             }
 
-            measureChar();
-            document.fonts.ready.then(measureChar);
             window.chrome.webview.addEventListener('message', e => render(e.data));
             </script>
             </body>

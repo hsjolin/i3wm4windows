@@ -30,6 +30,9 @@ public static class ConfigStatementRegistration
         services.AddSingleton<IConfigStatement, BarPrintStatement>();
         services.AddSingleton<IConfigStatement, BarPaddingStatement>();
         services.AddSingleton<IConfigStatement, BarFontStatement>();
+        services.AddSingleton<IConfigStatement, BarSeparatorStatement>();
+        services.AddSingleton<IConfigStatement, BarItemStatement>();
+        services.AddSingleton<IConfigStatement, BarOnClickStatement>();
         services.AddSingleton<IConfigStatement>(
             new BarValueStatement("cpu", BarItemKind.Cpu));
         services.AddSingleton<IConfigStatement>(

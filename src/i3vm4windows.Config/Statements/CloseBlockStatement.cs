@@ -16,6 +16,18 @@ public sealed class CloseBlockStatement : IConfigStatement
             return;
         }
 
+        if (context.Bar.InOnClick)
+        {
+            context.Bar.InOnClick = false;
+            return;
+        }
+
+        if (context.Bar.InItem)
+        {
+            context.Bar.CloseItem();
+            return;
+        }
+
         if (context.InBar)
         {
             context.InBar = false;

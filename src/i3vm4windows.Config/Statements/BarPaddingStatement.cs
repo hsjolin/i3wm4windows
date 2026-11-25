@@ -19,6 +19,6 @@ public sealed class BarPaddingStatement : BarDirectiveStatement
             return;
         }
 
-        context.Bar.Items.Add(new BarItem(BarItemKind.Padding, Padding: padding));
+        context.Bar.AddPart(BarItemKind.Padding, padding: padding);
     }
 }

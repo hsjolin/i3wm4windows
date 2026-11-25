@@ -37,6 +37,9 @@ public enum ConfigAction
     ResizeShrinkHeight,
     CloseFocused,
     Refresh,
+    /// <summary>reload: restarts the whole app, reloading the
+    /// configuration without re-running exec (like the tray menu).</summary>
+    Restart,
     MoveWorkspaceToNextMonitor,
     Launch,
     FloatingToggle,
@@ -81,8 +84,38 @@ public enum BarItemKind
     Padding,
 }
 
-/// <summary>One status item of the bar, in configuration order.</summary>
-public sealed record BarItem(BarItemKind Kind, string Text = "", int Padding = 0);
+/// <summary>One part of a status item: a print text, a command's
+/// output, a value, or a spacer.</summary>
+public sealed record BarPart(BarItemKind Kind, string Text = "", int Padding = 0);
+
+/// <summary>One status item of the bar, in configuration order. A plain
+/// directive (print, cpu, exec, padding, ...) makes a single-part item;
+/// an item { ... } block makes a multi-part one, optionally with an
+/// onclick command.</summary>
+public sealed record BarItem
+{
+    /// <summary>A single-part item, as the plain bar directives make.</summary>
+    public BarItem(BarItemKind Kind, string Text = "", int Padding = 0) =>
+        Parts = new List<BarPart> { new(Kind, Text, Padding) };
+
+    /// <summary>A multi-part item from an item { ... } block.</summary>
+    public BarItem(IReadOnlyList<BarPart> Parts, string? OnClick = null)
+    {
+        this.Parts = Parts;
+        this.OnClick = OnClick;
+    }
+
+    public IReadOnlyList<BarPart> Parts { get; }
+
+    /// <summary>The command an onclick { ... } block attached, run when
+    /// the item is clicked.</summary>
+    public string? OnClick { get; }
+
+    /// <summary>Single-part views of the item, for renderers and tests.</summary>
+    public BarItemKind Kind => Parts.Count > 0 ? Parts[0].Kind : BarItemKind.Print;
+    public string Text => Parts.Count > 0 ? Parts[0].Text : "";
+    public int Padding => Parts.Count > 0 ? Parts[0].Padding : 0;
+}
 
 /// <summary>
 /// The bar's configuration, from the bar block of the configuration
@@ -97,7 +130,8 @@ public sealed record BarConfig(
     IReadOnlyList<string>? StatusCommands = null,
     IReadOnlyList<BarItem>? Items = null,
     string? Font = null,
-    double FontSize = 13)
+    double FontSize = 13,
+    string Separator = "")
 {
     public IReadOnlyList<string> Commands => StatusCommands ?? Array.Empty<string>();
 

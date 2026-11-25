@@ -13,11 +13,13 @@ internal sealed class ConfigRuntime : IConfigRuntime
 {
     private readonly WindowManager _windowManager;
     private readonly Action<string> _setMode;
+    private readonly Action _restart;
 
-    public ConfigRuntime(WindowManager windowManager, Action<string> setMode)
+    public ConfigRuntime(WindowManager windowManager, Action<string> setMode, Action restart)
     {
         _windowManager = windowManager;
         _setMode = setMode;
+        _restart = restart;
     }
 
     public void FocusRelative(int offset) => _windowManager.FocusRelative(offset);
@@ -42,6 +44,8 @@ internal sealed class ConfigRuntime : IConfigRuntime
     public void CloseFocused() => _windowManager.CloseFocused();
 
     public void Refresh() => _windowManager.RefreshWindows();
+
+    public void Restart() => _restart();
 
     public void ToggleFloating() => _windowManager.ToggleFloating();
 

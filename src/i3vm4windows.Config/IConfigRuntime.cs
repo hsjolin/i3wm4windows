@@ -22,6 +22,11 @@ public interface IConfigRuntime
     void SetSplit();
     void CloseFocused();
     void Refresh();
+
+    /// <summary>reload: restarts the whole application, reloading the
+    /// configuration; exec autostarts do not run again, exec_always do —
+    /// the same as the tray menu's reload.</summary>
+    void Restart();
     void ToggleFloating();
     void ToggleScratchpad(WindowRule rule);
     void ResizeFocused(ResizeAxis axis, int delta);
