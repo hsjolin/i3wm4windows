@@ -147,20 +147,30 @@ public sealed class BarSettings
     /// the separator. Null until set; the bar defaults it to 1.</summary>
     public int? ItemPadding;
 
-    /// <summary>Whether an item { ... } block is open, and the parts and
-    /// onclick command collected for it so far.</summary>
-    public bool InItem;
-    public bool InOnClick;
-    public List<BarPart> ItemParts = new();
-    public string? ItemOnClick;
+    /// <summary>The open item { ... } blocks, outermost first; item
+    /// blocks nest, a child block closes into its parent's children.</summary>
+    private readonly Stack<ItemBuilder> _itemStack = new();
 
-    /// <summary>Adds one part where it belongs: to the open item block,
-    /// or as a standalone item when no item block is open.</summary>
+    /// <summary>Whether an item { ... } block is open.</summary>
+    public bool InItem => _itemStack.Count > 0;
+
+    /// <summary>Whether an onclick { ... } block is open inside the
+    /// innermost item.</summary>
+    public bool InOnClick;
+
+    /// <summary>The innermost open item block, or null.</summary>
+    public ItemBuilder? CurrentItem => _itemStack.Count > 0 ? _itemStack.Peek() : null;
+
+    /// <summary>Opens an item { ... } block, nested when one is open.</summary>
+    public void OpenItem() => _itemStack.Push(new ItemBuilder());
+
+    /// <summary>Adds one part where it belongs: to the innermost open
+    /// item block, or as a standalone item when none is open.</summary>
     public void AddPart(BarItemKind kind, string text = "", int padding = 0)
     {
-        if (InItem)
+        if (CurrentItem is { } item)
         {
-            ItemParts.Add(new BarPart(kind, text, padding));
+            item.Parts.Add(new BarPart(kind, text, padding));
         }
         else
         {
@@ -168,20 +178,41 @@ public sealed class BarSettings
         }
     }
 
-    /// <summary>Closes the open item block: the collected parts (and
-    /// onclick command, if any) become one item.</summary>
+    /// <summary>Closes the innermost item block: the collected parts,
+    /// onclick command, separator/padding overrides and child items
+    /// become one item — a child of the enclosing item, if any.</summary>
     public void CloseItem()
     {
-        if (ItemParts.Count > 0 || ItemOnClick is not null)
+        if (_itemStack.Count == 0)
         {
-            Items.Add(new BarItem(ItemParts.ToList(), ItemOnClick));
+            return;
         }
 
-        ItemParts.Clear();
-        ItemOnClick = null;
-        InItem = false;
+        var builder = _itemStack.Pop();
+        var item = new BarItem(
+            builder.Parts, builder.OnClick, builder.Children, builder.Separator, builder.Padding);
+        if (_itemStack.Count > 0)
+        {
+            _itemStack.Peek().Children.Add(item);
+        }
+        else if (builder.Parts.Count > 0 || builder.OnClick is not null || builder.Children.Count > 0)
+        {
+            Items.Add(item);
+        }
     }
 
     public BarConfig ToConfig() => new(
         Position, Height, Clock, Date, Commands, Items, Font, FontSize ?? 13, Separator, ItemPadding ?? 1);
+}
+
+/// <summary>One open item { ... } block while parsing: the parts,
+/// onclick command, separator/padding overrides and nested child items
+/// collected for it so far.</summary>
+public sealed class ItemBuilder
+{
+    public List<BarPart> Parts = new();
+    public string? OnClick;
+    public List<BarItem> Children = new();
+    public string? Separator;
+    public int? Padding;
 }

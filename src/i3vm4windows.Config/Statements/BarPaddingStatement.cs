@@ -5,7 +5,8 @@ namespace i3vm4windows.Config.Statements;
 /// between every status item — half on each side of the separator, or
 /// the whole gap when no separator is set; unset means 1. Inside an
 /// item { ... } block, a spacer of x characters between the item's
-/// parts. Padding is soft: items keep the widest cell they have shown,
+/// parts — and the gap between the item's children when it has any.
+/// Padding is soft: items keep the widest cell they have shown,
 /// so one item growing does not move the others.
 /// </summary>
 public sealed class BarPaddingStatement : BarDirectiveStatement
@@ -25,6 +26,10 @@ public sealed class BarPaddingStatement : BarDirectiveStatement
         if (context.Bar.InItem)
         {
             context.Bar.AddPart(BarItemKind.Padding, padding: padding);
+            if (context.Bar.CurrentItem is { } item)
+            {
+                item.Padding = padding;
+            }
         }
         else
         {

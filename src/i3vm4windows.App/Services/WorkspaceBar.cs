@@ -228,87 +228,23 @@ internal sealed class WorkspaceBar : IDisposable
 
             items.AddRange(_config.BarItems);
 
-            // One output per command part (item index, part index);
+            // One output per command part, keyed by the item itself;
             // commands run in parallel.
-            var commandTasks = new List<(int Item, int Part, Task<string> Output)>();
-            for (var i = 0; i < items.Count; i++)
-            {
-                for (var p = 0; p < items[i].Parts.Count; p++)
-                {
-                    if (items[i].Parts[p].Kind == BarItemKind.Command)
-                    {
-                        commandTasks.Add((i, p, RunCommand(items[i].Parts[p].Text)));
-                    }
-                }
-            }
+            var commandTasks = new List<(BarItem Item, int Part, Task<string> Output)>();
+            CollectCommandTasks(items, commandTasks);
 
-            var outputs = new Dictionary<(int Item, int Part), string>();
+            var outputs = new Dictionary<(BarItem Item, int Part), string>();
             foreach (var (item, part, output) in commandTasks)
             {
                 outputs[(item, part)] = await output;
             }
 
-            // One cell per item — its parts joined — with the separator
-            // between items, and the onclick command remembered per cell.
+            // One cell per item — its parts joined — nested items
+            // recursively — with the gap between items, and the onclick
+            // command remembered per cell.
             var slots = new List<Slot>();
             var clicks = new List<string?>();
-            for (var i = 0; i < items.Count; i++)
-            {
-                var text = new System.Text.StringBuilder();
-                foreach (var (part, p) in items[i].Parts.Select((part, p) => (part, p)))
-                {
-                    switch (part.Kind)
-                    {
-                        case BarItemKind.Cpu:
-                            text.Append(CpuPercent()?.ToString(CultureInfo.InvariantCulture) ?? "");
-                            break;
-                        case BarItemKind.Ram:
-                            text.Append(MemoryPercent()?.ToString(CultureInfo.InvariantCulture) ?? "");
-                            break;
-                        case BarItemKind.Battery:
-                            text.Append(BatteryPercent()?.ToString(CultureInfo.InvariantCulture) ?? "");
-                            break;
-                        case BarItemKind.Command:
-                            text.Append(outputs.TryGetValue((i, p), out var output) ? output : "");
-                            break;
-                        case BarItemKind.Padding:
-                            text.Append('\u00A0', Math.Max(1, part.Padding));
-                            break;
-                        default:
-                            text.Append(part.Text);
-                            break;
-                    }
-                }
-
-                slots.Add(new Slot(text.ToString(), items[i].OnClick is not null));
-                clicks.Add(items[i].OnClick);
-
-                // The gap between items: half the padding, the separator,
-                // half the padding — or just the padding when no separator
-                // is set. Non-breaking spaces: plain spaces collapse at the
-                // start/end of a cell in HTML, nbsp does not.
-                if (i < items.Count - 1)
-                {
-                    var padding = _config.ItemPadding;
-                    var gap = new System.Text.StringBuilder();
-                    if (_config.Separator.Length > 0)
-                    {
-                        gap.Append('\u00A0', padding / 2);
-                        gap.Append(_config.Separator);
-                        gap.Append('\u00A0', padding - padding / 2);
-                    }
-                    else if (padding > 0)
-                    {
-                        gap.Append('\u00A0', padding);
-                    }
-
-                    if (gap.Length > 0)
-                    {
-                        slots.Add(new Slot(gap.ToString(), false));
-                        clicks.Add(null);
-                    }
-                }
-            }
+            EmitItems(items, _config.Separator, _config.ItemPadding, outputs, slots, clicks);
 
             foreach (var bar in _bars.Values)
             {
@@ -321,6 +257,144 @@ internal sealed class WorkspaceBar : IDisposable
         {
             _statusRunning = false;
         }
+    }
+
+    /// <summary>Collects the command parts of the items and their
+    /// nested children, to run in parallel.</summary>
+    private static void CollectCommandTasks(
+        IEnumerable<BarItem> items, List<(BarItem Item, int Part, Task<string> Output)> tasks)
+    {
+        foreach (var item in items)
+        {
+            for (var p = 0; p < item.Parts.Count; p++)
+            {
+                if (item.Parts[p].Kind == BarItemKind.Command)
+                {
+                    tasks.Add((item, p, RunCommand(item.Parts[p].Text)));
+                }
+            }
+
+            CollectCommandTasks(item.Children, tasks);
+        }
+    }
+
+    /// <summary>
+    /// Emits one cell per item with a gap between the items: half the
+    /// padding, the separator, half the padding — or just the padding
+    /// when the separator is empty.
+    /// </summary>
+    private void EmitItems(
+        IReadOnlyList<BarItem> items,
+        string separator,
+        int padding,
+        IReadOnlyDictionary<(BarItem Item, int Part), string> outputs,
+        List<Slot> slots,
+        List<string?> clicks)
+    {
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (i > 0)
+            {
+                EmitGap(separator, padding, slots, clicks);
+            }
+
+            EmitItem(items[i], outputs, slots, clicks);
+        }
+    }
+
+    /// <summary>
+    /// Emits the item's own cell (its parts joined), then its children
+    /// recursively. The gaps inside a parent item use the parent's own
+    /// separator (none unless set there) and padding (the bar's unless
+    /// set there).
+    /// </summary>
+    private void EmitItem(
+        BarItem item,
+        IReadOnlyDictionary<(BarItem Item, int Part), string> outputs,
+        List<Slot> slots,
+        List<string?> clicks)
+    {
+        var emitted = 0;
+        if (item.Parts.Count > 0)
+        {
+            slots.Add(new Slot(BuildText(item, outputs), item.OnClick is not null));
+            clicks.Add(item.OnClick);
+            emitted++;
+        }
+
+        if (item.Children.Count > 0)
+        {
+            var separator = item.Separator ?? "";
+            var padding = item.ItemPadding ?? _config.ItemPadding;
+            for (var i = 0; i < item.Children.Count; i++)
+            {
+                if (emitted > 0)
+                {
+                    EmitGap(separator, padding, slots, clicks);
+                }
+
+                EmitItem(item.Children[i], outputs, slots, clicks);
+                emitted++;
+            }
+        }
+    }
+
+    /// <summary>The gap between two cells. Non-breaking spaces: plain
+    /// spaces collapse at the start/end of a cell in HTML, nbsp does
+    /// not.</summary>
+    private static void EmitGap(string separator, int padding, List<Slot> slots, List<string?> clicks)
+    {
+        var gap = new System.Text.StringBuilder();
+        if (separator.Length > 0)
+        {
+            gap.Append('\u00A0', padding / 2);
+            gap.Append(separator);
+            gap.Append('\u00A0', padding - padding / 2);
+        }
+        else if (padding > 0)
+        {
+            gap.Append('\u00A0', padding);
+        }
+
+        if (gap.Length > 0)
+        {
+            slots.Add(new Slot(gap.ToString(), false));
+            clicks.Add(null);
+        }
+    }
+
+    /// <summary>One cell's text: the item's parts joined, values and
+    /// command outputs in place of their parts.</summary>
+    private string BuildText(BarItem item, IReadOnlyDictionary<(BarItem Item, int Part), string> outputs)
+    {
+        var text = new System.Text.StringBuilder();
+        for (var p = 0; p < item.Parts.Count; p++)
+        {
+            var part = item.Parts[p];
+            switch (part.Kind)
+            {
+                case BarItemKind.Cpu:
+                    text.Append(CpuPercent()?.ToString(CultureInfo.InvariantCulture) ?? "");
+                    break;
+                case BarItemKind.Ram:
+                    text.Append(MemoryPercent()?.ToString(CultureInfo.InvariantCulture) ?? "");
+                    break;
+                case BarItemKind.Battery:
+                    text.Append(BatteryPercent()?.ToString(CultureInfo.InvariantCulture) ?? "");
+                    break;
+                case BarItemKind.Command:
+                    text.Append(outputs.TryGetValue((item, p), out var output) ? output : "");
+                    break;
+                case BarItemKind.Padding:
+                    text.Append('\u00A0', Math.Max(1, part.Padding));
+                    break;
+                default:
+                    text.Append(part.Text);
+                    break;
+            }
+        }
+
+        return text.ToString();
     }
 
     /// <summary>

@@ -28,7 +28,11 @@ public class ExecStatement : CommandStatement
             if (context.Bar.InOnClick)
             {
                 // The onclick block's command: run when the item is clicked.
-                context.Bar.ItemOnClick = commandText;
+                if (context.Bar.CurrentItem is { } item)
+                {
+                    item.OnClick = commandText;
+                }
+
                 return;
             }
 

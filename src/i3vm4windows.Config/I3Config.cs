@@ -91,7 +91,7 @@ public sealed record BarPart(BarItemKind Kind, string Text = "", int Padding = 0
 /// <summary>One status item of the bar, in configuration order. A plain
 /// directive (print, cpu, exec, padding, ...) makes a single-part item;
 /// an item { ... } block makes a multi-part one, optionally with an
-/// onclick command.</summary>
+/// onclick command and nested child item { ... } blocks.</summary>
 public sealed record BarItem
 {
     /// <summary>A single-part item, as the plain bar directives make.</summary>
@@ -99,10 +99,14 @@ public sealed record BarItem
         Parts = new List<BarPart> { new(Kind, Text, Padding) };
 
     /// <summary>A multi-part item from an item { ... } block.</summary>
-    public BarItem(IReadOnlyList<BarPart> Parts, string? OnClick = null)
+    public BarItem(IReadOnlyList<BarPart> Parts, string? OnClick = null,
+        IReadOnlyList<BarItem>? Children = null, string? Separator = null, int? ItemPadding = null)
     {
         this.Parts = Parts;
         this.OnClick = OnClick;
+        this.Children = Children ?? Array.Empty<BarItem>();
+        this.Separator = Separator;
+        this.ItemPadding = ItemPadding;
     }
 
     public IReadOnlyList<BarPart> Parts { get; }
@@ -110,6 +114,20 @@ public sealed record BarItem
     /// <summary>The command an onclick { ... } block attached, run when
     /// the item is clicked.</summary>
     public string? OnClick { get; }
+
+    /// <summary>The nested item { ... } blocks of this item, in
+    /// configuration order.</summary>
+    public IReadOnlyList<BarItem> Children { get; }
+
+    /// <summary>The separator drawn between this item's children (a
+    /// separator directive inside the item block); null draws none,
+    /// whatever the bar's separator is.</summary>
+    public string? Separator { get; }
+
+    /// <summary>The padding between this item's children (a padding
+    /// directive inside the item block); null uses the bar's
+    /// padding.</summary>
+    public int? ItemPadding { get; }
 
     /// <summary>Single-part views of the item, for renderers and tests.</summary>
     public BarItemKind Kind => Parts.Count > 0 ? Parts[0].Kind : BarItemKind.Print;

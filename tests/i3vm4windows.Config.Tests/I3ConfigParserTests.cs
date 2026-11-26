@@ -899,6 +899,58 @@ public class I3ConfigParserTests
     }
 
     [Fact]
+    public void Bar_nested_items_collect_into_children_with_parent_gap_settings()
+    {
+        var config = I3ConfigParser.Parse("""
+            bar {
+                separator 🔹
+                padding 2
+                item {
+                    separator -
+                    padding 3
+                    item {
+                        print A
+                        onclick {
+                            exec a.exe
+                        }
+                    }
+                    item {
+                        print B
+                    }
+                }
+                item {
+                    print CPU
+                    padding 1
+                    cpu
+                }
+            }
+            """);
+
+        var bar = config.Bar!;
+        Assert.Equal("🔹", bar.Separator);
+        Assert.Equal(2, bar.ItemPadding);
+        Assert.Equal(2, bar.BarItems.Count);
+
+        var parent = bar.BarItems[0];
+        Assert.Equal("-", parent.Separator);
+        Assert.Equal(3, parent.ItemPadding);
+        Assert.Equal(2, parent.Children.Count);
+        Assert.Equal("A", parent.Children[0].Text);
+        Assert.Equal("a.exe", parent.Children[0].OnClick);
+        Assert.Equal("B", parent.Children[1].Text);
+        Assert.Empty(parent.Children[0].Children);
+
+        var cpu = bar.BarItems[1];
+        Assert.Empty(cpu.Children);
+        Assert.Null(cpu.Separator);
+        // padding inside an item spaces its parts and, when the item has
+        // children, sets the gap between them.
+        Assert.Equal(1, cpu.ItemPadding);
+        Assert.Equal(1, cpu.Parts[1].Padding);
+        Assert.Empty(config.Warnings);
+    }
+
+    [Fact]
     public void Bar_onclick_outside_an_item_block_warns()
     {
         var config = I3ConfigParser.Parse("""
@@ -912,26 +964,6 @@ public class I3ConfigParserTests
         // The rejected onclick { leaves its } with nothing to close.
         Assert.Equal(2, config.Warnings.Count);
         Assert.Contains("onclick", config.Warnings[0]);
-    }
-
-    [Fact]
-    public void Bar_item_block_rejects_nesting()
-    {
-        var config = I3ConfigParser.Parse("""
-            bar {
-                item {
-                    item {
-                        print no
-                    }
-                }
-            }
-            """);
-
-        // The rejected inner item { leaves its } with nothing to close.
-        Assert.Equal(2, config.Warnings.Count);
-        Assert.Contains("Unsupported item directive", config.Warnings[0]);
-        var item = Assert.Single(config.Bar!.BarItems);
-        Assert.Equal("no", Assert.Single(item.Parts).Text);
     }
 
     [Fact]

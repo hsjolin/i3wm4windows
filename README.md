@@ -283,6 +283,23 @@ bar {
       exec taskmgr
     }
   }
+  # item blocks nest: the children render after the parent's own parts,
+  # separated by padding only — no separator unless the parent sets
+  # one. separator and padding inside a parent item set the gap between
+  # its children:
+  item {
+    item {
+      print 🖥️
+      onclick {
+        exec control desk.cpl
+      }
+    }
+    item {
+      print 🔊
+      exec volume.exe
+      print %
+    }
+  }
 }
 ```
 
